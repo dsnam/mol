@@ -1,6 +1,8 @@
 mod lexer;
+mod parser;
 
 use lexer::*;
+use parser::*;
 
 fn main() {
     loop {

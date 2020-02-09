@@ -18,6 +18,8 @@ pub enum Token {
     RightCurlBracket,
     Dot,
     Comma,
+    Colon,
+    Semicolon,
     Identifier(String),
     Int(i32),
     Float(f64),
@@ -25,16 +27,27 @@ pub enum Token {
     BoolTrue,
     Comment,
     Op(char),
+    StringLiteral(String),
+    If,
+    While,
+    For,
+    Else,
 }
 
 #[derive(Debug)]
 pub struct LexerError {
     pub error: String,
+    pub line: usize,
+    pub row: usize,
 }
 
 impl LexerError {
-    pub fn new(error_msg: String) -> Self {
-        Self { error: error_msg }
+    pub fn new(error_msg: String, line: usize, row: usize) -> Self {
+        Self {
+            error: error_msg,
+            line,
+            row,
+        }
     }
 }
 
@@ -74,10 +87,8 @@ impl<'a> Lexer<'a> {
         return Ok(TokenInfo::new(tok, line, row));
     }
 
-    fn wrap_error(&mut self, c: char) -> LexerResult {
-        let mut msg = String::from("Unconsumable token: ");
-        msg.push(c);
-        return Err(LexerError::new(String::from(msg)));
+    fn wrap_error(msg: String, line: usize, row: usize) -> LexerResult {
+        return Err(LexerError::new(msg, line, row));
     }
 
     pub fn lex(&mut self) -> LexerResult {
@@ -125,6 +136,8 @@ impl<'a> Lexer<'a> {
             '>' => Self::wrap_token(RightAngBracket, line, start),
             '{' => Self::wrap_token(LeftCurlBracket, line, start),
             '}' => Self::wrap_token(RightCurlBracket, line, start),
+            ':' => Self::wrap_token(Colon, line, start),
+            ';' => Self::wrap_token(Semicolon, line, start),
             '0'..='9' => {
                 let mut is_float = false;
                 loop {
@@ -164,6 +177,10 @@ impl<'a> Lexer<'a> {
                     "fn" => Self::wrap_token(Fn, line, start),
                     "false" => Self::wrap_token(BoolFalse, line, start),
                     "true" => Self::wrap_token(BoolTrue, line, start),
+                    "if" => Self::wrap_token(If, line, start),
+                    "while" => Self::wrap_token(While, line, start),
+                    "for" => Self::wrap_token(For, line, start),
+                    "else" => Self::wrap_token(Else, line, start),
                     identifier => Self::wrap_token(Identifier(identifier.to_string()), line, start),
                 };
                 val
@@ -183,7 +200,28 @@ impl<'a> Lexer<'a> {
                     Self::wrap_token(Op('/'), line, start)
                 }
             }
-            c => self.wrap_error(c),
+            '"' => {
+                loop {
+                    let next = chars.next();
+                    row += 1;
+                    if next.is_none() {
+                        return Self::wrap_error(
+                            "Unclosed string literal".parse().unwrap(),
+                            line,
+                            start,
+                        );
+                    }
+                    if next == Some('"') {
+                        break;
+                    }
+                }
+                Self::wrap_token(
+                    StringLiteral(src[start + 1..row - 1].parse().unwrap()),
+                    line,
+                    start,
+                )
+            }
+            c => Self::wrap_error(format!("Could not process input {}", c), line, start),
         };
         self.line = line;
         self.row = row;
@@ -203,5 +241,61 @@ impl<'a> Iterator for Lexer<'a> {
             },
             Err(_) => Option::from(next_res),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unwrap_token(result: LexerResult) -> Token {
+        result.unwrap().token
+    }
+
+    fn test_tokens<'a>(
+        actual: impl Iterator<Item = &'a Token>,
+        expected: impl Iterator<Item = &'a Token>,
+    ) {
+        for (actual_tok, expected_tok) in actual.zip(expected) {
+            assert_eq!(actual_tok, expected_tok);
+        }
+    }
+
+    #[test]
+    fn test_single_lexes() {
+        let lexer = Lexer::new(". for method_call() if else \"wow\"");
+        let expected = [
+            Dot,
+            For,
+            Identifier(String::from("method_call")),
+            LeftParen,
+            RightParen,
+            If,
+            Else,
+            StringLiteral(String::from("wow")),
+        ];
+        let tokens = lexer.map(|x| unwrap_token(x)).collect::<Vec<_>>();
+        test_tokens(tokens.iter(), expected.iter());
+    }
+
+    #[test]
+    fn test_open_string_fails() {
+        let mut lexer = Lexer::new("\"");
+        let tokens = lexer.by_ref().collect::<Vec<_>>();
+        assert!(!tokens.is_empty());
+        let result = tokens.get(0).unwrap();
+        assert!(result.is_err());
+        let err = result.as_ref().unwrap_err();
+        assert_eq!(err.error, "Unclosed string literal")
+    }
+
+    #[test]
+    fn test_string() {
+        let lexer = Lexer::new("\"hi I'm a string\"");
+        let tokens = lexer.map(|x| unwrap_token(x)).collect::<Vec<_>>();
+        assert_eq!(
+            tokens.get(0).unwrap(),
+            &StringLiteral(String::from("hi I'm a string"))
+        )
     }
 }
