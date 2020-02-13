@@ -144,32 +144,32 @@ impl<'a> Lexer<'a> {
         col += 1;
 
         let result = match next.unwrap() {
-            '.' => Self::wrap_token(Dot, line, start),
-            '(' => Self::wrap_token(LeftParen, line, start),
-            ')' => Self::wrap_token(RightParen, line, start),
-            ',' => Self::wrap_token(Comma, line, start),
-            '[' => Self::wrap_token(LeftSqBracket, line, start),
-            ']' => Self::wrap_token(RightSqBracket, line, start),
-            '<' => Self::wrap_token(LeftAngBracket, line, start),
-            '>' => Self::wrap_token(RightAngBracket, line, start),
-            '{' => Self::wrap_token(LeftCurlBracket, line, start),
-            '}' => Self::wrap_token(RightCurlBracket, line, start),
-            ':' => Self::wrap_token(Colon, line, start),
-            ';' => Self::wrap_token(Semicolon, line, start),
-            '+' => Self::wrap_token(Plus, line, start),
-            '-' => Self::wrap_token(Minus, line, start),
-            '!' => Self::wrap_token(Bang, line, start),
-            '=' => Self::wrap_token(Equal, line, start),
-            '?' => Self::wrap_token(QuestionMark, line, start),
-            '*' => Self::wrap_token(Asterisk, line, start),
-            '|' => Self::wrap_token(Pipe, line, start),
-            '^' => Self::wrap_token(Caret, line, start),
+            '.' => Dot,
+            '(' => LeftParen,
+            ')' => RightParen,
+            ',' => Comma,
+            '[' => LeftSqBracket,
+            ']' => RightSqBracket,
+            '<' => LeftAngBracket,
+            '>' => RightAngBracket,
+            '{' => LeftCurlBracket,
+            '}' => RightCurlBracket,
+            ':' => Colon,
+            ';' => Semicolon,
+            '+' => Plus,
+            '-' => Minus,
+            '!' => Bang,
+            '=' => Equal,
+            '?' => QuestionMark,
+            '*' => Asterisk,
+            '|' => Pipe,
+            '^' => Caret,
             '0'..='9' => {
                 let mut is_float = false;
                 loop {
                     let next = match chars.peek() {
                         Some(next) => *next,
-                        None => return Self::wrap_token(EOF, line, col),
+                        None => return Self::wrap_error(String::from("Unexpected EOF"), line, col),
                     };
                     if !next.is_digit(10) {
                         if next == '.' && !is_float {
@@ -182,9 +182,9 @@ impl<'a> Lexer<'a> {
                     col += 1;
                 }
                 if is_float {
-                    Self::wrap_token(Float(src[start..col].parse().unwrap()), line, start)
+                    Float(src[start..col].parse().unwrap())
                 } else {
-                    Self::wrap_token(Int(src[start..col].parse().unwrap()), line, start)
+                    Int(src[start..col].parse().unwrap())
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => {
@@ -200,23 +200,23 @@ impl<'a> Lexer<'a> {
                     col += 1;
                 }
                 let val = match &src[start..col] {
-                    "fn" => Self::wrap_token(Fn, line, start),
-                    "false" => Self::wrap_token(BoolFalse, line, start),
-                    "true" => Self::wrap_token(BoolTrue, line, start),
-                    "if" => Self::wrap_token(If, line, start),
-                    "while" => Self::wrap_token(While, line, start),
-                    "for" => Self::wrap_token(For, line, start),
-                    "else" => Self::wrap_token(Else, line, start),
-                    "return" => Self::wrap_token(Return, line, start),
-                    "op" => Self::wrap_token(Op, line, start),
-                    "is" => Self::wrap_token(Is, line, start),
-                    "as" => Self::wrap_token(As, line, start),
-                    "int" => Self::wrap_token(IntType, line, start),
-                    "bool" => Self::wrap_token(BoolType, line, start),
-                    "float" => Self::wrap_token(FloatType, line, start),
-                    "mut" => Self::wrap_token(Mut, line, start),
-                    "const" => Self::wrap_token(Const, line, start),
-                    identifier => Self::wrap_token(Identifier(identifier.to_string()), line, start),
+                    "fn" => Fn,
+                    "false" => BoolFalse,
+                    "true" => BoolTrue,
+                    "if" => If,
+                    "while" => While,
+                    "for" => For,
+                    "else" => Else,
+                    "return" => Return,
+                    "op" => Op,
+                    "is" => Is,
+                    "as" => As,
+                    "int" => IntType,
+                    "bool" => BoolType,
+                    "float" => FloatType,
+                    "mut" => Mut,
+                    "const" => Const,
+                    identifier => Identifier(identifier.to_string()),
                 };
                 val
             }
@@ -230,9 +230,9 @@ impl<'a> Lexer<'a> {
                             break;
                         }
                     }
-                    Self::wrap_token(Comment, line, start)
+                    Comment
                 } else {
-                    Self::wrap_token(Slash, line, start)
+                    Slash
                 }
             }
             '"' => {
@@ -250,24 +250,24 @@ impl<'a> Lexer<'a> {
                         break;
                     }
                 }
-                Self::wrap_token(
-                    StringLiteral(src[start + 1..col - 1].parse().unwrap()),
+
+                StringLiteral(src[start + 1..col - 1].parse().unwrap())
+            }
+            c => {
+                return Self::wrap_error(
+                    format!(
+                        "Could not process input {} at line {}, col {}",
+                        c, line, start
+                    ),
                     line,
                     start,
                 )
             }
-            c => Self::wrap_error(
-                format!(
-                    "Could not process input {} at line {}, col {}",
-                    c, line, start
-                ),
-                line,
-                start,
-            ),
         };
         self.line = line;
         self.col = col;
-        result
+
+        Self::wrap_token(result, line, start)
     }
 }
 
