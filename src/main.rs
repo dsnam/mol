@@ -4,6 +4,7 @@ mod parser;
 use lexer::*;
 use parser::*;
 
+// this just makes a repl to play with the lexer at the moment
 fn main() {
     loop {
         let mut input = String::new();
