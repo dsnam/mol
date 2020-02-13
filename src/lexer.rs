@@ -4,7 +4,7 @@ use std::ops::DerefMut;
 use std::str::Chars;
 use Token::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     EOF,
     Fn,
@@ -20,47 +20,65 @@ pub enum Token {
     Comma,
     Colon,
     Semicolon,
+    Equal,
+    Bang,
+    QuestionMark,
+    Asterisk,
+    Slash,
+    Caret, // ^
+    Pipe,  // |
+    Plus,
+    Minus,
     Identifier(String),
     Int(i32),
     Float(f64),
     BoolFalse,
     BoolTrue,
     Comment,
-    Op(char),
+    Op,
     StringLiteral(String),
     If,
     While,
     For,
     Else,
+    Return,
+    Is,
+    As,
+    Mut,
+    Const,
+    // primitives
+    IntType,
+    FloatType,
+    BoolType,
 }
 
 #[derive(Debug)]
 pub struct LexerError {
     pub error: String,
     pub line: usize,
-    pub row: usize,
+    pub col: usize,
 }
 
 impl LexerError {
-    pub fn new(error_msg: String, line: usize, row: usize) -> Self {
+    pub fn new(error_msg: String, line: usize, col: usize) -> Self {
         Self {
             error: error_msg,
             line,
-            row,
+            col,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TokenInfo {
     pub token: Token,
     pub line: usize,
-    pub row: usize,
+    pub col: usize,
 }
 
 impl TokenInfo {
-    pub fn new(token: Token, line: usize, row: usize) -> Self {
-        Self { token, line, row }
+    pub fn new(token: Token, line: usize, col: usize) -> Self {
+        Self { token, line, col }
     }
 }
 
@@ -70,7 +88,7 @@ pub struct Lexer<'a> {
     input: &'a str,
     chars: Box<Peekable<Chars<'a>>>,
     line: usize,
-    row: usize,
+    col: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -79,23 +97,23 @@ impl<'a> Lexer<'a> {
             input,
             chars: Box::new(input.chars().peekable()),
             line: 0,
-            row: 0,
+            col: 0,
         }
     }
 
-    fn wrap_token(tok: Token, line: usize, row: usize) -> LexerResult {
-        return Ok(TokenInfo::new(tok, line, row));
+    fn wrap_token(tok: Token, line: usize, col: usize) -> LexerResult {
+        return Ok(TokenInfo::new(tok, line, col));
     }
 
-    fn wrap_error(msg: String, line: usize, row: usize) -> LexerResult {
-        return Err(LexerError::new(msg, line, row));
+    fn wrap_error(msg: String, line: usize, col: usize) -> LexerResult {
+        return Err(LexerError::new(msg, line, col));
     }
 
     pub fn lex(&mut self) -> LexerResult {
         let chars = self.chars.deref_mut();
         let src = self.input;
 
-        let mut row = self.row;
+        let mut col = self.col;
         let mut line = self.line;
 
         loop {
@@ -103,27 +121,27 @@ impl<'a> Lexer<'a> {
                 let ch = chars.peek();
                 if ch.is_none() {
                     self.line = line;
-                    self.row = row;
-                    return Self::wrap_token(EOF, line, row);
+                    self.col = col;
+                    return Self::wrap_token(EOF, line, col);
                 }
                 if ch.unwrap().eq('\n'.borrow()) {
                     line += 1;
-                    row = 0;
+                    col = 0;
                 }
                 if !ch.unwrap().is_whitespace() {
                     break;
                 }
             }
             chars.next();
-            row += 1;
+            col += 1;
         }
-        let start = row;
+        let start = col;
         let next = chars.next();
         if next.is_none() {
-            return Self::wrap_token(EOF, line, row);
+            return Self::wrap_token(EOF, line, col);
         }
 
-        row += 1;
+        col += 1;
 
         let result = match next.unwrap() {
             '.' => Self::wrap_token(Dot, line, start),
@@ -138,12 +156,20 @@ impl<'a> Lexer<'a> {
             '}' => Self::wrap_token(RightCurlBracket, line, start),
             ':' => Self::wrap_token(Colon, line, start),
             ';' => Self::wrap_token(Semicolon, line, start),
+            '+' => Self::wrap_token(Plus, line, start),
+            '-' => Self::wrap_token(Minus, line, start),
+            '!' => Self::wrap_token(Bang, line, start),
+            '=' => Self::wrap_token(Equal, line, start),
+            '?' => Self::wrap_token(QuestionMark, line, start),
+            '*' => Self::wrap_token(Asterisk, line, start),
+            '|' => Self::wrap_token(Pipe, line, start),
+            '^' => Self::wrap_token(Caret, line, start),
             '0'..='9' => {
                 let mut is_float = false;
                 loop {
                     let next = match chars.peek() {
                         Some(next) => *next,
-                        None => return Self::wrap_token(EOF, line, row),
+                        None => return Self::wrap_token(EOF, line, col),
                     };
                     if !next.is_digit(10) {
                         if next == '.' && !is_float {
@@ -153,27 +179,27 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     chars.next();
-                    row += 1;
+                    col += 1;
                 }
                 if is_float {
-                    Self::wrap_token(Float(src[start..row].parse().unwrap()), line, start)
+                    Self::wrap_token(Float(src[start..col].parse().unwrap()), line, start)
                 } else {
-                    Self::wrap_token(Int(src[start..row].parse().unwrap()), line, start)
+                    Self::wrap_token(Int(src[start..col].parse().unwrap()), line, start)
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => {
                 loop {
                     let next = match chars.peek() {
                         Some(next) => *next,
-                        None => return Self::wrap_token(EOF, line, row),
+                        None => return Self::wrap_error(String::from("Unexpected EOF"), line, col),
                     };
                     if next != '_' && !next.is_alphanumeric() {
                         break;
                     }
                     chars.next();
-                    row += 1;
+                    col += 1;
                 }
-                let val = match &src[start..row] {
+                let val = match &src[start..col] {
                     "fn" => Self::wrap_token(Fn, line, start),
                     "false" => Self::wrap_token(BoolFalse, line, start),
                     "true" => Self::wrap_token(BoolTrue, line, start),
@@ -181,6 +207,15 @@ impl<'a> Lexer<'a> {
                     "while" => Self::wrap_token(While, line, start),
                     "for" => Self::wrap_token(For, line, start),
                     "else" => Self::wrap_token(Else, line, start),
+                    "return" => Self::wrap_token(Return, line, start),
+                    "op" => Self::wrap_token(Op, line, start),
+                    "is" => Self::wrap_token(Is, line, start),
+                    "as" => Self::wrap_token(As, line, start),
+                    "int" => Self::wrap_token(IntType, line, start),
+                    "bool" => Self::wrap_token(BoolType, line, start),
+                    "float" => Self::wrap_token(FloatType, line, start),
+                    "mut" => Self::wrap_token(Mut, line, start),
+                    "const" => Self::wrap_token(Const, line, start),
                     identifier => Self::wrap_token(Identifier(identifier.to_string()), line, start),
                 };
                 val
@@ -190,23 +225,23 @@ impl<'a> Lexer<'a> {
                 if next == Some(&'/') {
                     loop {
                         let c = chars.next();
-                        row += 1;
+                        col += 1;
                         if c == Some('\n') {
                             break;
                         }
                     }
                     Self::wrap_token(Comment, line, start)
                 } else {
-                    Self::wrap_token(Op('/'), line, start)
+                    Self::wrap_token(Slash, line, start)
                 }
             }
             '"' => {
                 loop {
                     let next = chars.next();
-                    row += 1;
+                    col += 1;
                     if next.is_none() {
                         return Self::wrap_error(
-                            "Unclosed string literal".parse().unwrap(),
+                            String::from("Unclosed string literal"),
                             line,
                             start,
                         );
@@ -216,15 +251,22 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 Self::wrap_token(
-                    StringLiteral(src[start + 1..row - 1].parse().unwrap()),
+                    StringLiteral(src[start + 1..col - 1].parse().unwrap()),
                     line,
                     start,
                 )
             }
-            c => Self::wrap_error(format!("Could not process input {}", c), line, start),
+            c => Self::wrap_error(
+                format!(
+                    "Could not process input {} at line {}, col {}",
+                    c, line, start
+                ),
+                line,
+                start,
+            ),
         };
         self.line = line;
-        self.row = row;
+        self.col = col;
         result
     }
 }
@@ -252,11 +294,9 @@ mod tests {
         result.unwrap().token
     }
 
-    fn test_tokens<'a>(
-        actual: impl Iterator<Item = &'a Token>,
-        expected: impl Iterator<Item = &'a Token>,
-    ) {
-        for (actual_tok, expected_tok) in actual.zip(expected) {
+    fn test_tokens(actual: Vec<Token>, expected: Vec<Token>) {
+        assert_eq!(actual.len(), expected.len());
+        for (actual_tok, expected_tok) in actual.iter().zip(expected.iter()) {
             assert_eq!(actual_tok, expected_tok);
         }
     }
@@ -264,7 +304,7 @@ mod tests {
     #[test]
     fn test_single_lexes() {
         let lexer = Lexer::new(". for method_call() if else \"wow\"");
-        let expected = [
+        let expected = vec![
             Dot,
             For,
             Identifier(String::from("method_call")),
@@ -275,7 +315,7 @@ mod tests {
             StringLiteral(String::from("wow")),
         ];
         let tokens = lexer.map(|x| unwrap_token(x)).collect::<Vec<_>>();
-        test_tokens(tokens.iter(), expected.iter());
+        test_tokens(tokens, expected);
     }
 
     #[test]
@@ -297,5 +337,30 @@ mod tests {
             tokens.get(0).unwrap(),
             &StringLiteral(String::from("hi I'm a string"))
         )
+    }
+
+    #[test]
+    fn test_function_def() {
+        let lexer = Lexer::new("fn test(param1: Type1, param2: Type2) -> OutputType {\n}");
+        let tokens = lexer.map(|x| unwrap_token(x)).collect::<Vec<_>>();
+        let expected = vec![
+            Fn,
+            Identifier(String::from("test")),
+            LeftParen,
+            Identifier(String::from("param1")),
+            Colon,
+            Identifier(String::from("Type1")),
+            Comma,
+            Identifier(String::from("param2")),
+            Colon,
+            Identifier(String::from("Type2")),
+            RightParen,
+            Minus,
+            RightAngBracket,
+            Identifier(String::from("OutputType")),
+            LeftCurlBracket,
+            RightCurlBracket,
+        ];
+        test_tokens(tokens, expected)
     }
 }
