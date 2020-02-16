@@ -44,12 +44,8 @@ pub enum Token {
     Return,
     Is,
     As,
-    Mut,
-    Const,
-    // primitives
-    IntType,
-    FloatType,
-    BoolType,
+    Val,
+    Def,
 }
 
 #[derive(Debug)]
@@ -199,7 +195,7 @@ impl<'a> Lexer<'a> {
                     chars.next();
                     col += 1;
                 }
-                let val = match &src[start..col] {
+                match &src[start..col] {
                     "fn" => Fn,
                     "false" => BoolFalse,
                     "true" => BoolTrue,
@@ -211,14 +207,10 @@ impl<'a> Lexer<'a> {
                     "op" => Op,
                     "is" => Is,
                     "as" => As,
-                    "int" => IntType,
-                    "bool" => BoolType,
-                    "float" => FloatType,
-                    "mut" => Mut,
-                    "const" => Const,
+                    "def" => Def,
+                    "val" => Val,
                     identifier => Identifier(identifier.to_string()),
-                };
-                val
+                }
             }
             '/' => {
                 let next = chars.peek();
@@ -241,7 +233,10 @@ impl<'a> Lexer<'a> {
                     col += 1;
                     if next.is_none() {
                         return Self::wrap_error(
-                            String::from("Unclosed string literal"),
+                            format!(
+                                "Unclosed string literal starting at line {}, col {}",
+                                line, start
+                            ),
                             line,
                             start,
                         );
@@ -326,7 +321,10 @@ mod tests {
         let result = tokens.get(0).unwrap();
         assert!(result.is_err());
         let err = result.as_ref().unwrap_err();
-        assert_eq!(err.error, "Unclosed string literal")
+        assert_eq!(
+            err.error,
+            "Unclosed string literal starting at line 0, col 0"
+        )
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use crate::lexer::{Token, Token::*, TokenInfo};
+use crate::parser::TypeDesc::FnSignature;
 
 #[derive(Debug)]
 pub enum Expr {
@@ -29,7 +30,6 @@ pub enum Expr {
 
 pub enum Statement {
     VarDec {
-        mutable: bool,
         name: String,
         type_name: Option<String>,
     },
@@ -53,18 +53,27 @@ pub enum Statement {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TypedIdentifier {
     name: String,
-    type_name: String,
+    type_desc: TypeDesc,
 }
 
 #[derive(Debug)]
 pub struct Prototype {
     pub name: String,
-    pub args: Vec<TypedIdentifier>,
-    pub return_type: Option<String>,
+    pub args: Option<Vec<TypedIdentifier>>,
+    pub return_type: Option<TypeDesc>,
     pub is_operator: bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TypeDesc {
+    TypeName(String),
+    FnSignature {
+        args: Option<Vec<TypedIdentifier>>,
+        return_type: Option<Box<TypeDesc>>,
+    },
 }
 
 #[derive(Debug)]
@@ -153,7 +162,11 @@ impl Parser {
         match result {
             Ok(result) => {
                 if !self.at_end() {
-                    Err(Self::wrap_error(String::from("borked"), 0, 0))
+                    Err(Self::wrap_error(
+                        format!("Unexpected token {:?}", self.curr()),
+                        0,
+                        0,
+                    ))
                 } else {
                     Ok(result)
                 }
@@ -195,15 +208,12 @@ impl Parser {
         Ok(Function { prototype, body })
     }
 
-    fn parse_prototype(&mut self) -> Result<Prototype, ParserError> {
-        self.expect(Fn);
-
-        let fn_name = self.parse_identifier()?;
-
+    fn parse_parenthesized_args(&mut self) -> Result<Option<Vec<TypedIdentifier>>, ParserError> {
         self.expect(LeftParen);
-
-        let mut args = Vec::new();
-        if self.next() != RightParen {
+        if self.next() == RightParen {
+            Ok(None)
+        } else {
+            let mut args = Vec::new();
             loop {
                 args.push(self.parse_typed_identifier()?);
                 match self.curr() {
@@ -227,13 +237,22 @@ impl Parser {
                     }
                 }
             }
+            Ok(Some(args))
         }
-        let return_type: Option<String>;
+    }
+
+    fn parse_prototype(&mut self) -> Result<Prototype, ParserError> {
+        self.expect(Fn);
+
+        let fn_name = self.parse_identifier()?;
+
+        let args = self.parse_parenthesized_args()?;
+
+        let return_type: Option<TypeDesc>;
         if self.curr() == Minus {
-            println!("hi");
             self.expect(Minus);
             self.expect(RightAngBracket);
-            return_type = Option::Some(self.parse_identifier()?);
+            return_type = Option::Some(self.parse_type_desc()?);
         } else {
             return_type = Option::None;
         }
@@ -268,11 +287,32 @@ impl Parser {
         }
     }
 
+    fn parse_type_desc(&mut self) -> Result<TypeDesc, ParserError> {
+        match self.current()?.token {
+            Identifier(s) => {
+                self.advance();
+                Ok(TypeDesc::TypeName(s))
+            }
+            LeftParen => {
+                let args = self.parse_parenthesized_args()?;
+                self.expect(Minus);
+                self.expect(RightAngBracket);
+                let return_type = Option::Some(Box::new(self.parse_type_desc()?));
+                Ok(FnSignature { args, return_type })
+            }
+            _ => Err(Self::wrap_error(
+                String::from("Expected type name or signature"),
+                self.current()?.line,
+                self.current()?.col,
+            )),
+        }
+    }
+
     fn parse_typed_identifier(&mut self) -> Result<TypedIdentifier, ParserError> {
         let name = self.parse_identifier()?;
         self.expect(Colon);
-        let type_name = self.parse_identifier()?;
-        Ok(TypedIdentifier { name, type_name })
+        let type_desc = self.parse_type_desc()?;
+        Ok(TypedIdentifier { name, type_desc })
     }
 
     fn parse_literal(&mut self) -> Result<Expr, ParserError> {
@@ -310,6 +350,7 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::lexer::*;
+    use crate::parser::TypeDesc::{FnSignature, TypeName};
 
     fn wrap_tok(token: Token) -> TokenInfo {
         TokenInfo {
@@ -342,10 +383,72 @@ mod tests {
         .collect::<Vec<_>>();
         let mut parser = Parser::new(tokens);
         let proto = parser.parse_prototype().unwrap();
+        let args = proto.args.unwrap();
         assert_eq!(proto.name, "test");
-        assert_eq!(proto.args.len(), 2);
-        assert_eq!(proto.args.get(0).unwrap().name, "param1");
-        assert_eq!(proto.args.get(0).unwrap().type_name, "Type1");
-        assert_eq!(proto.return_type.unwrap(), "OutputType");
+        assert_eq!(args.len(), 2);
+        assert_eq!(args.get(0).unwrap().name, "param1");
+        assert_eq!(
+            args.get(0).unwrap().type_desc,
+            TypeName(String::from("Type1"))
+        );
+        assert_eq!(
+            proto.return_type.unwrap(),
+            TypeName(String::from("OutputType"))
+        );
+    }
+
+    #[test]
+    fn test_parse_fn_proto_with_fn_arg() {
+        let tokens = vec![
+            Fn,
+            Identifier(String::from("test")),
+            LeftParen,
+            Identifier(String::from("param1")),
+            Colon,
+            Identifier(String::from("Type1")),
+            Comma,
+            Identifier(String::from("param2")),
+            Colon,
+            LeftParen,
+            Identifier(String::from("argParam")),
+            Colon,
+            Identifier(String::from("int")),
+            RightParen,
+            Minus,
+            RightAngBracket,
+            Identifier(String::from("bool")),
+            RightParen,
+            Minus,
+            RightAngBracket,
+            Identifier(String::from("OutputType")),
+        ]
+        .iter()
+        .map(|t| wrap_tok(t.clone()))
+        .collect::<Vec<_>>();
+        let mut parser = Parser::new(tokens);
+        let proto = parser.parse_prototype().unwrap();
+        let args = proto.args.unwrap();
+        assert_eq!(proto.name, "test");
+        assert_eq!(args.len(), 2);
+        assert_eq!(args.get(0).unwrap().name, "param1");
+        assert_eq!(
+            args.get(0).unwrap().type_desc,
+            TypeName(String::from("Type1"))
+        );
+        assert_eq!(args.get(1).unwrap().name, "param2");
+        assert_eq!(
+            args.get(1).unwrap().type_desc,
+            FnSignature {
+                args: Some(vec![TypedIdentifier {
+                    name: String::from("argParam"),
+                    type_desc: TypeName(String::from("int"))
+                }]),
+                return_type: Some(Box::new(TypeName(String::from("bool"))))
+            }
+        );
+        assert_eq!(
+            proto.return_type.unwrap(),
+            TypeName(String::from("OutputType"))
+        );
     }
 }
