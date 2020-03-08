@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::iter::Peekable;
-use std::ops::DerefMut;
 use std::str::Chars;
 use Token::*;
 
@@ -20,15 +19,24 @@ pub enum Token {
     Comma,
     Colon,
     Semicolon,
+    Assign,
     Equal,
     Bang,
+    BangEqual,
+    LessThanEqual,
+    GreaterThanEqual,
     QuestionMark,
     Asterisk,
+    MultAssign,
     Slash,
+    Mod,
     Caret, // ^
     Pipe,  // |
     Plus,
+    PlusAssign,
     Minus,
+    MinusAssign,
+    Arrow,
     Identifier(String),
     Int(i32),
     Float(f64),
@@ -38,14 +46,16 @@ pub enum Token {
     Op,
     StringLiteral(String),
     If,
-    While,
-    For,
     Else,
     Return,
     Is,
     As,
     Val,
     Def,
+    IntType,
+    FloatType,
+    StrType,
+    BoolType,
 }
 
 #[derive(Debug)]
@@ -97,47 +107,64 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn wrap_token(tok: Token, line: usize, col: usize) -> LexerResult {
-        return Ok(TokenInfo::new(tok, line, col));
+    fn wrap_token(&self, tok: Token) -> LexerResult {
+        return Ok(TokenInfo::new(tok, self.line, self.col));
     }
 
-    fn wrap_error(msg: String, line: usize, col: usize) -> LexerResult {
-        return Err(LexerError::new(msg, line, col));
+    fn wrap_token_with_pos(&self, tok: Token, col: usize) -> LexerResult {
+        return Ok(TokenInfo::new(tok, self.line, col));
+    }
+
+    fn wrap_error(&self, msg: String) -> LexerResult {
+        return Err(LexerError::new(msg, self.line, self.col));
+    }
+
+    fn wrap_error_with_pos(&self, msg: String, col: usize) -> LexerResult {
+        return Err(LexerError::new(msg, self.line, col));
+    }
+
+    fn next_is(&mut self, expected: char) -> bool {
+        match self.chars.peek() {
+            Some(actual) => *actual == expected,
+            _ => false,
+        }
+    }
+
+    fn advance(&mut self) {
+        self.chars.next();
+        self.col += 1;
     }
 
     pub fn lex(&mut self) -> LexerResult {
-        let chars = self.chars.deref_mut();
         let src = self.input;
-
-        let mut col = self.col;
-        let mut line = self.line;
 
         loop {
             {
-                let ch = chars.peek();
-                if ch.is_none() {
-                    self.line = line;
-                    self.col = col;
-                    return Self::wrap_token(EOF, line, col);
-                }
-                if ch.unwrap().eq('\n'.borrow()) {
-                    line += 1;
-                    col = 0;
-                }
-                if !ch.unwrap().is_whitespace() {
-                    break;
+                let ch = self.chars.peek();
+                match self.chars.peek() {
+                    None => {
+                        return self.wrap_token(EOF);
+                    }
+                    Some(c) => {
+                        if c.eq('\n'.borrow()) {
+                            self.line += 1;
+                            self.col = 0;
+                        }
+                        if !c.is_whitespace() {
+                            break;
+                        }
+                    }
                 }
             }
-            chars.next();
-            col += 1;
+            self.advance();
         }
-        let start = col;
-        let next = chars.next();
+        let start = self.col;
+        let next = self.chars.next();
         if next.is_none() {
-            return Self::wrap_token(EOF, line, col);
+            return self.wrap_token(EOF);
         }
 
-        col += 1;
+        self.col += 1;
 
         let result = match next.unwrap() {
             '.' => Dot,
@@ -146,26 +173,72 @@ impl<'a> Lexer<'a> {
             ',' => Comma,
             '[' => LeftSqBracket,
             ']' => RightSqBracket,
-            '<' => LeftAngBracket,
-            '>' => RightAngBracket,
+            '<' => {
+                if self.next_is('=') {
+                    self.advance();
+                    LessThanEqual
+                } else {
+                    LeftAngBracket
+                }
+            }
+            '>' => {
+                if self.next_is('=') {
+                    self.advance();
+                    GreaterThanEqual
+                } else {
+                    RightAngBracket
+                }
+            }
             '{' => LeftCurlBracket,
             '}' => RightCurlBracket,
             ':' => Colon,
             ';' => Semicolon,
-            '+' => Plus,
-            '-' => Minus,
-            '!' => Bang,
-            '=' => Equal,
+            '+' => {
+                if self.next_is('=') {
+                    self.advance();
+                    PlusAssign
+                } else {
+                    Plus
+                }
+            }
+            '-' => {
+                if self.next_is('=') {
+                    self.advance();
+                    MinusAssign
+                } else if self.next_is('>') {
+                    self.advance();
+                    Arrow
+                } else {
+                    Minus
+                }
+            }
+            '!' => {
+                if self.next_is('=') {
+                    self.advance();
+                    BangEqual
+                } else {
+                    Bang
+                }
+            }
+            '=' => {
+                if self.next_is('=') {
+                    self.advance();
+                    Equal
+                } else {
+                    Assign
+                }
+            }
             '?' => QuestionMark,
             '*' => Asterisk,
             '|' => Pipe,
             '^' => Caret,
+            '%' => Mod,
             '0'..='9' => {
                 let mut is_float = false;
                 loop {
-                    let next = match chars.peek() {
+                    let next = match self.chars.peek() {
                         Some(next) => *next,
-                        None => return Self::wrap_error(String::from("Unexpected EOF"), line, col),
+                        None => return self.wrap_error(String::from("Unexpected EOF")),
                     };
                     if !next.is_digit(10) {
                         if next == '.' && !is_float {
@@ -174,34 +247,30 @@ impl<'a> Lexer<'a> {
                             break;
                         }
                     }
-                    chars.next();
-                    col += 1;
+                    self.advance();
                 }
                 if is_float {
-                    Float(src[start..col].parse().unwrap())
+                    Float(src[start..self.col].parse().unwrap())
                 } else {
-                    Int(src[start..col].parse().unwrap())
+                    Int(src[start..self.col].parse().unwrap())
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => {
                 loop {
-                    let next = match chars.peek() {
+                    let next = match self.chars.peek() {
                         Some(next) => *next,
-                        None => return Self::wrap_error(String::from("Unexpected EOF"), line, col),
+                        None => return self.wrap_error(String::from("Unexpected EOF")),
                     };
                     if next != '_' && !next.is_alphanumeric() {
                         break;
                     }
-                    chars.next();
-                    col += 1;
+                    self.advance();
                 }
-                match &src[start..col] {
+                match &src[start..self.col] {
                     "fn" => Fn,
                     "false" => BoolFalse,
                     "true" => BoolTrue,
                     "if" => If,
-                    "while" => While,
-                    "for" => For,
                     "else" => Else,
                     "return" => Return,
                     "op" => Op,
@@ -209,15 +278,19 @@ impl<'a> Lexer<'a> {
                     "as" => As,
                     "def" => Def,
                     "val" => Val,
+                    "int" => IntType,
+                    "bool" => BoolType,
+                    "float" => FloatType,
+                    "str" => StrType,
                     identifier => Identifier(identifier.to_string()),
                 }
             }
             '/' => {
-                let next = chars.peek();
+                let next = self.chars.peek();
                 if next == Some(&'/') {
                     loop {
-                        let c = chars.next();
-                        col += 1;
+                        let c = self.chars.next();
+                        self.col += 1;
                         if c == Some('\n') {
                             break;
                         }
@@ -229,15 +302,14 @@ impl<'a> Lexer<'a> {
             }
             '"' => {
                 loop {
-                    let next = chars.next();
-                    col += 1;
+                    let next = self.chars.next();
+                    self.col += 1;
                     if next.is_none() {
-                        return Self::wrap_error(
+                        return self.wrap_error_with_pos(
                             format!(
                                 "Unclosed string literal starting at line {}, col {}",
-                                line, start
+                                self.line, start
                             ),
-                            line,
                             start,
                         );
                     }
@@ -246,23 +318,20 @@ impl<'a> Lexer<'a> {
                     }
                 }
 
-                StringLiteral(src[start + 1..col - 1].parse().unwrap())
+                StringLiteral(src[start + 1..self.col - 1].parse().unwrap())
             }
             c => {
-                return Self::wrap_error(
+                return self.wrap_error_with_pos(
                     format!(
                         "Could not process input {} at line {}, col {}",
-                        c, line, start
+                        c, self.line, start
                     ),
-                    line,
                     start,
                 )
             }
         };
-        self.line = line;
-        self.col = col;
 
-        Self::wrap_token(result, line, start)
+        self.wrap_token_with_pos(result, start)
     }
 }
 
@@ -298,10 +367,9 @@ mod tests {
 
     #[test]
     fn test_single_lexes() {
-        let lexer = Lexer::new(". for method_call() if else \"wow\"");
+        let lexer = Lexer::new(". method_call() if else \"wow\"");
         let expected = vec![
             Dot,
-            For,
             Identifier(String::from("method_call")),
             LeftParen,
             RightParen,
@@ -353,8 +421,7 @@ mod tests {
             Colon,
             Identifier(String::from("Type2")),
             RightParen,
-            Minus,
-            RightAngBracket,
+            Arrow,
             Identifier(String::from("OutputType")),
             LeftCurlBracket,
             RightCurlBracket,
