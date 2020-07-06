@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::iter::Peekable;
 use std::str::Chars;
 use Token::*;
@@ -7,6 +6,7 @@ use Token::*;
 pub enum Token {
     EOF,
     Fn,
+    Linebreak,
     LeftParen,
     RightParen,
     LeftSqBracket,
@@ -27,15 +27,13 @@ pub enum Token {
     GreaterThanEqual,
     QuestionMark,
     Asterisk,
-    MultAssign,
     Slash,
     Mod,
     Caret, // ^
     Pipe,  // |
+    Ampersand,
     Plus,
-    PlusAssign,
     Minus,
-    MinusAssign,
     Arrow,
     Identifier(String),
     Int(i32),
@@ -51,7 +49,6 @@ pub enum Token {
     Is,
     As,
     Val,
-    Def,
     IntType,
     FloatType,
     StrType,
@@ -107,20 +104,25 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn wrap_token(&self, tok: Token) -> LexerResult {
-        return Ok(TokenInfo::new(tok, self.line, self.col));
+    fn wrap_token(&mut self, tok: Token) -> LexerResult {
+        self.wrap_token_with_pos(tok, self.col)
     }
 
-    fn wrap_token_with_pos(&self, tok: Token, col: usize) -> LexerResult {
-        return Ok(TokenInfo::new(tok, self.line, col));
+    fn wrap_token_with_pos(&mut self, tok: Token, col: usize) -> LexerResult {
+        let res = TokenInfo::new(tok, self.line, col);
+        if res.token == Linebreak {
+            self.line += 1;
+            self.col = 0;
+        }
+        Ok(res)
     }
 
     fn wrap_error(&self, msg: String) -> LexerResult {
-        return Err(LexerError::new(msg, self.line, self.col));
+        Err(LexerError::new(msg, self.line, self.col))
     }
 
     fn wrap_error_with_pos(&self, msg: String, col: usize) -> LexerResult {
-        return Err(LexerError::new(msg, self.line, col));
+        Err(LexerError::new(msg, self.line, col))
     }
 
     fn next_is(&mut self, expected: char) -> bool {
@@ -136,21 +138,14 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn lex(&mut self) -> LexerResult {
-        let src = self.input;
-
         loop {
             {
-                let ch = self.chars.peek();
                 match self.chars.peek() {
                     None => {
                         return self.wrap_token(EOF);
                     }
                     Some(c) => {
-                        if c.eq('\n'.borrow()) {
-                            self.line += 1;
-                            self.col = 0;
-                        }
-                        if !c.is_whitespace() {
+                        if !c.is_whitespace() || c.eq(&'\n') {
                             break;
                         }
                     }
@@ -167,6 +162,7 @@ impl<'a> Lexer<'a> {
         self.col += 1;
 
         let result = match next.unwrap() {
+            '\n' => Linebreak,
             '.' => Dot,
             '(' => LeftParen,
             ')' => RightParen,
@@ -193,19 +189,9 @@ impl<'a> Lexer<'a> {
             '}' => RightCurlBracket,
             ':' => Colon,
             ';' => Semicolon,
-            '+' => {
-                if self.next_is('=') {
-                    self.advance();
-                    PlusAssign
-                } else {
-                    Plus
-                }
-            }
+            '+' => Plus,
             '-' => {
-                if self.next_is('=') {
-                    self.advance();
-                    MinusAssign
-                } else if self.next_is('>') {
+                if self.next_is('>') {
                     self.advance();
                     Arrow
                 } else {
@@ -231,6 +217,7 @@ impl<'a> Lexer<'a> {
             '?' => QuestionMark,
             '*' => Asterisk,
             '|' => Pipe,
+            '&' => Ampersand,
             '^' => Caret,
             '%' => Mod,
             '0'..='9' => {
@@ -250,9 +237,9 @@ impl<'a> Lexer<'a> {
                     self.advance();
                 }
                 if is_float {
-                    Float(src[start..self.col].parse().unwrap())
+                    Float(self.input[start..self.col].parse().unwrap())
                 } else {
-                    Int(src[start..self.col].parse().unwrap())
+                    Int(self.input[start..self.col].parse().unwrap())
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => {
@@ -266,7 +253,7 @@ impl<'a> Lexer<'a> {
                     }
                     self.advance();
                 }
-                match &src[start..self.col] {
+                match &self.input[start..self.col] {
                     "fn" => Fn,
                     "false" => BoolFalse,
                     "true" => BoolTrue,
@@ -276,7 +263,6 @@ impl<'a> Lexer<'a> {
                     "op" => Op,
                     "is" => Is,
                     "as" => As,
-                    "def" => Def,
                     "val" => Val,
                     "int" => IntType,
                     "bool" => BoolType,
@@ -318,7 +304,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
 
-                StringLiteral(src[start + 1..self.col - 1].parse().unwrap())
+                StringLiteral(self.input[start + 1..self.col - 1].parse().unwrap())
             }
             c => {
                 return self.wrap_error_with_pos(
@@ -424,6 +410,7 @@ mod tests {
             Arrow,
             Identifier(String::from("OutputType")),
             LeftCurlBracket,
+            Linebreak,
             RightCurlBracket,
         ];
         test_tokens(tokens, expected)
