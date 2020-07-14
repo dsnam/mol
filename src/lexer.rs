@@ -6,7 +6,6 @@ use Token::*;
 pub enum Token {
     EOF,
     Fn,
-    Linebreak,
     LeftParen,
     RightParen,
     LeftSqBracket,
@@ -41,29 +40,29 @@ pub enum Token {
     BoolFalse,
     BoolTrue,
     Comment,
-    Op,
     StringLiteral(String),
     If,
     Else,
     Return,
     Is,
-    As,
     Val,
     IntType,
     FloatType,
     StrType,
     BoolType,
+    When,
+    Module,
 }
 
 #[derive(Debug)]
 pub struct LexerError {
     pub error: String,
-    pub line: usize,
-    pub col: usize,
+    pub line: i32,
+    pub col: i32,
 }
 
 impl LexerError {
-    pub fn new(error_msg: String, line: usize, col: usize) -> Self {
+    pub fn new(error_msg: String, line: i32, col: i32) -> Self {
         Self {
             error: error_msg,
             line,
@@ -75,12 +74,12 @@ impl LexerError {
 #[derive(Debug, Clone)]
 pub struct TokenInfo {
     pub token: Token,
-    pub line: usize,
-    pub col: usize,
+    pub line: i32,
+    pub col: i32,
 }
 
 impl TokenInfo {
-    pub fn new(token: Token, line: usize, col: usize) -> Self {
+    pub fn new(token: Token, line: i32, col: i32) -> Self {
         Self { token, line, col }
     }
 }
@@ -90,8 +89,11 @@ pub type LexerResult = Result<TokenInfo, LexerError>;
 pub struct Lexer<'a> {
     input: &'a str,
     chars: Box<Peekable<Chars<'a>>>,
-    line: usize,
-    col: usize,
+    line: i32,
+    // column for debugging/error messages
+    col: i32,
+    // actual position in the input
+    pos: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -101,20 +103,16 @@ impl<'a> Lexer<'a> {
             chars: Box::new(input.chars().peekable()),
             line: 0,
             col: 0,
+            pos: 0,
         }
     }
 
     fn wrap_token(&mut self, tok: Token) -> LexerResult {
-        self.wrap_token_with_pos(tok, self.col)
+        Ok(TokenInfo::new(tok, self.line, self.col))
     }
 
     fn wrap_token_with_pos(&mut self, tok: Token, col: usize) -> LexerResult {
-        let res = TokenInfo::new(tok, self.line, col);
-        if res.token == Linebreak {
-            self.line += 1;
-            self.col = 0;
-        }
-        Ok(res)
+        Ok(TokenInfo::new(tok, self.line, col as i32))
     }
 
     fn wrap_error(&self, msg: String) -> LexerResult {
@@ -122,7 +120,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn wrap_error_with_pos(&self, msg: String, col: usize) -> LexerResult {
-        Err(LexerError::new(msg, self.line, col))
+        Err(LexerError::new(msg, self.line, col as i32))
     }
 
     fn next_is(&mut self, expected: char) -> bool {
@@ -135,6 +133,7 @@ impl<'a> Lexer<'a> {
     fn advance(&mut self) {
         self.chars.next();
         self.col += 1;
+        self.pos += 1;
     }
 
     pub fn lex(&mut self) -> LexerResult {
@@ -145,7 +144,11 @@ impl<'a> Lexer<'a> {
                         return self.wrap_token(EOF);
                     }
                     Some(c) => {
-                        if !c.is_whitespace() || c.eq(&'\n') {
+                        if c.eq(&'\n') {
+                            self.line += 1;
+                            self.col = -1;
+                        }
+                        if !c.is_whitespace() {
                             break;
                         }
                     }
@@ -153,16 +156,16 @@ impl<'a> Lexer<'a> {
             }
             self.advance();
         }
-        let start = self.col;
+        let start = self.pos;
         let next = self.chars.next();
         if next.is_none() {
             return self.wrap_token(EOF);
         }
 
         self.col += 1;
+        self.pos += 1;
 
         let result = match next.unwrap() {
-            '\n' => Linebreak,
             '.' => Dot,
             '(' => LeftParen,
             ')' => RightParen,
@@ -237,9 +240,9 @@ impl<'a> Lexer<'a> {
                     self.advance();
                 }
                 if is_float {
-                    Float(self.input[start..self.col].parse().unwrap())
+                    Float(self.input[start..self.pos].parse().unwrap())
                 } else {
-                    Int(self.input[start..self.col].parse().unwrap())
+                    Int(self.input[start..self.pos].parse().unwrap())
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => {
@@ -253,21 +256,21 @@ impl<'a> Lexer<'a> {
                     }
                     self.advance();
                 }
-                match &self.input[start..self.col] {
+                match &self.input[start..self.pos] {
                     "fn" => Fn,
                     "false" => BoolFalse,
                     "true" => BoolTrue,
                     "if" => If,
                     "else" => Else,
                     "return" => Return,
-                    "op" => Op,
                     "is" => Is,
-                    "as" => As,
                     "val" => Val,
                     "int" => IntType,
                     "bool" => BoolType,
                     "float" => FloatType,
                     "str" => StrType,
+                    "when" => When,
+                    "module" => Module,
                     identifier => Identifier(identifier.to_string()),
                 }
             }
@@ -277,6 +280,7 @@ impl<'a> Lexer<'a> {
                     loop {
                         let c = self.chars.next();
                         self.col += 1;
+                        self.pos += 1;
                         if c == Some('\n') {
                             break;
                         }
@@ -290,6 +294,7 @@ impl<'a> Lexer<'a> {
                 loop {
                     let next = self.chars.next();
                     self.col += 1;
+                    self.pos += 1;
                     if next.is_none() {
                         return self.wrap_error_with_pos(
                             format!(
@@ -304,7 +309,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
 
-                StringLiteral(self.input[start + 1..self.col - 1].parse().unwrap())
+                StringLiteral(self.input[start + 1..self.pos - 1].parse().unwrap())
             }
             c => {
                 return self.wrap_error_with_pos(
@@ -345,7 +350,6 @@ mod tests {
     }
 
     fn test_tokens(actual: Vec<Token>, expected: Vec<Token>) {
-        assert_eq!(actual.len(), expected.len());
         for (actual_tok, expected_tok) in actual.iter().zip(expected.iter()) {
             assert_eq!(actual_tok, expected_tok);
         }
@@ -410,7 +414,34 @@ mod tests {
             Arrow,
             Identifier(String::from("OutputType")),
             LeftCurlBracket,
-            Linebreak,
+            RightCurlBracket,
+        ];
+        test_tokens(tokens, expected)
+    }
+
+    #[test]
+    fn test_exp() {
+        let lexer = Lexer::new(
+            "fn negate(x: int) -> int {
+                return -x;
+            }",
+        );
+        let tokens = lexer.map(|x| unwrap_token(x)).collect::<Vec<_>>();
+        let expected = vec![
+            Fn,
+            Identifier(String::from("negate")),
+            LeftParen,
+            Identifier(String::from("x")),
+            Colon,
+            IntType,
+            RightParen,
+            Arrow,
+            IntType,
+            LeftCurlBracket,
+            Return,
+            Minus,
+            Identifier(String::from("x")),
+            Semicolon,
             RightCurlBracket,
         ];
         test_tokens(tokens, expected)
