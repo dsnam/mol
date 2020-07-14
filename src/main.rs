@@ -1,8 +1,7 @@
-mod lexer;
-mod parser;
+extern crate molva;
 
-use lexer::*;
-use parser::*;
+use molva::lexer::*;
+use molva::parser::*;
 
 // this just makes a repl to play with the lexer at the moment
 fn main() {
