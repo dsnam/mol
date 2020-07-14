@@ -292,7 +292,7 @@ impl Parser {
         self.expect(Val)?;
         let name = match self.curr() {
             Identifier(s) => {
-                self.advance();
+                self.advance()?;
                 s
             }
             _ => return Err(self.wrap_error(String::from("Expected identifier"))),
@@ -338,11 +338,11 @@ impl Parser {
     }
 
     fn parse_paren_expr(&mut self) -> Result<Expr, ParserError> {
-        self.expect(LeftParen);
+        self.expect(LeftParen)?;
 
         let expr = self.parse_expr()?;
 
-        self.expect(RightParen);
+        self.expect(RightParen)?;
 
         Ok(expr)
     }
@@ -358,7 +358,7 @@ impl Parser {
     }
 
     fn parse_fn_args_def(&mut self) -> Result<Option<Vec<TypedIdentifier>>, ParserError> {
-        self.expect(LeftParen);
+        self.expect(LeftParen)?;
         if self.next() == RightParen {
             Ok(None)
         } else {
@@ -367,11 +367,11 @@ impl Parser {
                 args.push(self.parse_typed_identifier()?);
                 match self.curr() {
                     RightParen => {
-                        self.advance();
+                        self.advance()?;
                         break;
                     }
                     Comma => {
-                        self.advance();
+                        self.advance()?;
                     }
                     _ => {
                         return Err(self.wrap_error(String::from("Expected ',' or ')'")));
@@ -383,11 +383,11 @@ impl Parser {
     }
 
     fn parse_prototype(&mut self) -> Result<Prototype, ParserError> {
-        self.expect(Fn);
+        self.expect(Fn)?;
 
         let name = match self.curr() {
             Identifier(s) => {
-                self.advance();
+                self.advance()?;
                 s
             }
             _ => return Err(self.wrap_error(String::from("Expected identifier"))),
@@ -469,14 +469,14 @@ impl Parser {
     }
 
     fn parse_conditional(&mut self) -> Result<Expr, ParserError> {
-        self.expect(If);
+        self.expect(If)?;
 
         let condition = self.parse_expr()?;
-        self.expect(LeftCurlBracket);
+        self.expect(LeftCurlBracket)?;
         let consequent = self.parse_expr()?;
         let alternative = match self.next() {
             Else => {
-                self.expect(Else);
+                self.expect(Else)?;
                 if self.next() == If {
                     Some(Box::new(self.parse_conditional()?))
                 } else {
@@ -496,7 +496,7 @@ impl Parser {
     fn parse_identifier(&mut self) -> Result<Expr, ParserError> {
         let name = match self.curr() {
             Identifier(s) => {
-                self.advance();
+                self.advance()?;
                 s
             }
             _ => return Err(self.wrap_error(String::from("Expected identifier"))),
@@ -504,7 +504,7 @@ impl Parser {
 
         match self.curr() {
             LeftParen => {
-                self.advance();
+                self.advance()?;
                 if let RightParen = self.curr() {
                     return Ok(Invoke {
                         fn_name: name,
@@ -525,7 +525,7 @@ impl Parser {
 
                     self.advance()?;
                 }
-                self.advance();
+                self.advance()?;
 
                 Ok(Invoke {
                     fn_name: name,
@@ -537,9 +537,9 @@ impl Parser {
     }
 
     fn parse_fn_type_desc(&mut self) -> Result<TypeDesc, ParserError> {
-        self.expect(LeftParen);
+        self.expect(LeftParen)?;
         if self.curr() == RightParen {
-            self.advance();
+            self.advance()?;
             let return_type = self.parse_fn_return_type()?;
             return Ok(FnSignature {
                 args: None,
@@ -551,11 +551,11 @@ impl Parser {
             fn_args.push(self.parse_type_desc()?);
             match self.curr() {
                 RightParen => {
-                    self.advance();
+                    self.advance()?;
                     break;
                 }
                 Comma => {
-                    self.advance();
+                    self.advance()?;
                 }
                 _ => {
                     return Err(self.wrap_error(String::from("Failed to parse fn type description")))
@@ -577,24 +577,24 @@ impl Parser {
     fn parse_type_desc(&mut self) -> Result<TypeDesc, ParserError> {
         match self.current()?.token {
             Identifier(s) => {
-                self.advance();
+                self.advance()?;
                 Ok(TypeDesc::TypeName(s))
             }
             LeftParen => Ok(self.parse_fn_type_desc()?),
             IntType => {
-                self.advance();
+                self.advance()?;
                 Ok(TypeDesc::IntType)
             }
             FloatType => {
-                self.advance();
+                self.advance()?;
                 Ok(TypeDesc::FloatType)
             }
             StrType => {
-                self.advance();
+                self.advance()?;
                 Ok(TypeDesc::StrType)
             }
             BoolType => {
-                self.advance();
+                self.advance()?;
                 Ok(TypeDesc::BoolType)
             }
             _ => Err(self.wrap_error(String::from("Expected type name or signature"))),
@@ -604,12 +604,12 @@ impl Parser {
     fn parse_typed_identifier(&mut self) -> Result<TypedIdentifier, ParserError> {
         let name = match self.curr() {
             Identifier(s) => {
-                self.advance();
+                self.advance()?;
                 s
             }
             _ => return Err(self.wrap_error(String::from("Expected identifier"))),
         };
-        self.expect(Colon);
+        self.expect(Colon)?;
         let type_desc = self.parse_type_desc()?;
         Ok(TypedIdentifier { name, type_desc })
     }
@@ -617,23 +617,23 @@ impl Parser {
     fn parse_literal(&mut self) -> Result<Expr, ParserError> {
         match self.current()?.token {
             Int(i) => {
-                self.advance();
+                self.advance()?;
                 Ok(Expr::Int(i))
             }
             Float(f) => {
-                self.advance();
+                self.advance()?;
                 Ok(Expr::Float(f))
             }
             StringLiteral(s) => {
-                self.advance();
+                self.advance()?;
                 Ok(Expr::StringLiteral(s))
             }
             BoolTrue => {
-                self.advance();
+                self.advance()?;
                 Ok(Expr::BoolTrue)
             }
             BoolFalse => {
-                self.advance();
+                self.advance()?;
                 Ok(Expr::BoolFalse)
             }
             _ => Err(self.wrap_error(format!("Unexpected {:?}", self.curr()))),
