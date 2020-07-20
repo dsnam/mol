@@ -98,6 +98,7 @@ pub struct Function {
     pub body: Vec<Expr>,
 }
 
+#[derive(Debug)]
 pub struct Module {
     pub functions: HashMap<String, Function>,
     pub name: String,
@@ -178,7 +179,10 @@ impl Parser {
             Minus => Some(Operator::Sub),
             Slash => Some(Operator::Div),
             Dot => Some(Operator::Deref),
-
+            LeftAngBracket => Some(Operator::LessThan),
+            RightAngBracket => Some(Operator::GreaterThan),
+            LessThanEqual => Some(Operator::LessThanEqual),
+            GreaterThanEqual => Some(Operator::GreaterThanEqual),
             _ => None,
         }
     }
@@ -245,20 +249,32 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Module, ParserError> {
         let mut functions = HashMap::new();
         let mut name = String::from("anon");
-        match self.current()?.token {
-            Fn => {
-                let function = self.parse_function()?;
-                functions.insert(function.prototype.name.clone(), function);
+        let mut module_named = false;
+        loop {
+            if self.at_end() {
+                break;
             }
-            Module => {
-                name = self.parse_module_decl()?;
-            }
-            _ => {
-                return Err(self.wrap_error(String::from(
-                    "only functions and the module name are allowed at the top level",
-                )))
-            }
-        };
+            match self.current()?.token {
+                Fn => {
+                    let function = self.parse_function()?;
+                    functions.insert(function.prototype.name.clone(), function);
+                }
+                Module => {
+                    if !module_named {
+                        module_named = true;
+                        name = self.parse_module_decl()?;
+                    } else {
+                        return Err(self
+                            .wrap_error(String::from("multiple module name declarations found")));
+                    }
+                }
+                _ => {
+                    return Err(self.wrap_error(String::from(
+                        "only functions and the module name are allowed at the top level",
+                    )))
+                }
+            };
+        }
 
         Ok(Module { name, functions })
     }
