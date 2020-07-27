@@ -1,6 +1,5 @@
 use crate::lexer::{Token, Token::*, TokenInfo};
 use crate::parser::Expr::{Conditional, Invoke, Unary, ValDec, Variable};
-use crate::parser::Operator::Not;
 use crate::parser::TypeDesc::FnSignature;
 use std::collections::HashMap;
 use std::error::Error;
@@ -28,12 +27,16 @@ pub enum Expr {
     Conditional {
         condition: Box<Expr>,
         consequent: Box<Expr>,
-        alternative: Option<Box<Expr>>,
+        alternative: Box<Expr>,
     },
 
     ValDec {
         name: String,
-        type_name: Option<TypeDesc>,
+        type_desc: Option<TypeDesc>,
+        value: Box<Expr>,
+    },
+
+    Return {
         value: Box<Expr>,
     },
 
@@ -68,14 +71,14 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq)]
 pub struct TypedIdentifier {
-    name: String,
-    type_desc: TypeDesc,
+    pub name: String,
+    pub type_desc: TypeDesc,
 }
 
 #[derive(Debug)]
 pub struct Prototype {
     pub name: String,
-    pub args: Option<Vec<TypedIdentifier>>,
+    pub args: Vec<TypedIdentifier>,
     pub return_type: TypeDesc,
 }
 
@@ -83,7 +86,7 @@ pub struct Prototype {
 pub enum TypeDesc {
     TypeName(String),
     FnSignature {
-        args: Option<Vec<TypeDesc>>,
+        args: Vec<TypeDesc>,
         return_type: Box<TypeDesc>,
     },
     IntType,
@@ -112,9 +115,9 @@ pub struct ParserError {
 }
 
 impl ParserError {
-    pub fn new(error_msg: String, line: i32, col: i32) -> Self {
+    pub fn new(error_msg: impl Into<String>, line: i32, col: i32) -> Self {
         Self {
-            error: error_msg,
+            error: error_msg.into(),
             line,
             col,
         }
@@ -196,7 +199,7 @@ impl Parser {
 
     fn current(&self) -> Result<TokenInfo, ParserError> {
         if self.pos >= self.tokens.len() {
-            Err(ParserError::new(String::from("Unexpected EOF"), 0, 0))
+            Err(ParserError::new("Unexpected EOF", 0, 0))
         } else {
             Ok(self.tokens[self.pos].clone())
         }
@@ -215,7 +218,7 @@ impl Parser {
         if self.pos <= self.tokens.len() {
             Ok(())
         } else {
-            Err(self.wrap_error(String::from("Unexpected EOF")))
+            Err(self.wrap_error("Unexpected EOF"))
         }
     }
 
@@ -226,7 +229,7 @@ impl Parser {
         self.tokens[self.pos + 1].clone().token
     }
 
-    fn wrap_error(&self, error_msg: String) -> ParserError {
+    fn wrap_error(&self, error_msg: impl Into<String>) -> ParserError {
         match self.current() {
             Ok(tok) => ParserError::new(error_msg, tok.line, tok.col),
             Err(e) => e,
@@ -264,14 +267,13 @@ impl Parser {
                         module_named = true;
                         name = self.parse_module_decl()?;
                     } else {
-                        return Err(self
-                            .wrap_error(String::from("multiple module name declarations found")));
+                        return Err(self.wrap_error("multiple module name declarations found"));
                     }
                 }
                 _ => {
-                    return Err(self.wrap_error(String::from(
+                    return Err(self.wrap_error(
                         "only functions and the module name are allowed at the top level",
-                    )))
+                    ))
                 }
             };
         }
@@ -284,7 +286,7 @@ impl Parser {
 
         let module = match self.parse_identifier()? {
             Variable(s) => Ok(s),
-            _ => Err(self.wrap_error(String::from("invalid module name"))),
+            _ => Err(self.wrap_error("invalid module name")),
         };
 
         self.expect(Semicolon)?;
@@ -311,7 +313,7 @@ impl Parser {
                 self.advance()?;
                 s
             }
-            _ => return Err(self.wrap_error(String::from("Expected identifier"))),
+            _ => return Err(self.wrap_error("Expected identifier")),
         };
         let val_type = match self.parse_type_desc() {
             Ok(type_desc) => Some(type_desc),
@@ -326,7 +328,7 @@ impl Parser {
 
         Ok(ValDec {
             name,
-            type_name: val_type,
+            type_desc: val_type,
             value: Box::new(expr),
         })
     }
@@ -335,12 +337,21 @@ impl Parser {
         self.expect(Return)?;
         let expr = self.parse_expr()?;
         self.expect(Semicolon)?;
-        Ok(expr)
+        Ok(Expr::Return {
+            value: Box::new(expr),
+        })
     }
 
     fn parse_expr_st(&mut self) -> Result<Expr, ParserError> {
         let expr = self.parse_expr()?;
-        self.expect(Semicolon)?;
+        match &expr {
+            Conditional {
+                condition: _,
+                consequent: _,
+                alternative: _,
+            } => (),
+            _ => self.expect(Semicolon)?,
+        }
         Ok(expr)
     }
 
@@ -373,29 +384,29 @@ impl Parser {
         Ok(Function { prototype, body })
     }
 
-    fn parse_fn_args_def(&mut self) -> Result<Option<Vec<TypedIdentifier>>, ParserError> {
+    fn parse_fn_args_def(&mut self) -> Result<Vec<TypedIdentifier>, ParserError> {
         self.expect(LeftParen)?;
-        if self.next() == RightParen {
-            Ok(None)
-        } else {
-            let mut args = Vec::new();
-            loop {
-                args.push(self.parse_typed_identifier()?);
-                match self.curr() {
-                    RightParen => {
-                        self.advance()?;
-                        break;
-                    }
-                    Comma => {
-                        self.advance()?;
-                    }
-                    _ => {
-                        return Err(self.wrap_error(String::from("Expected ',' or ')'")));
-                    }
+        let mut args = Vec::new();
+        if self.curr() == RightParen {
+            self.expect(RightParen)?;
+            return Ok(args);
+        }
+        loop {
+            args.push(self.parse_typed_identifier()?);
+            match self.curr() {
+                RightParen => {
+                    self.advance()?;
+                    break;
+                }
+                Comma => {
+                    self.advance()?;
+                }
+                _ => {
+                    return Err(self.wrap_error("Expected ',' or ')'"));
                 }
             }
-            Ok(Some(args))
         }
+        Ok(args)
     }
 
     fn parse_prototype(&mut self) -> Result<Prototype, ParserError> {
@@ -406,7 +417,7 @@ impl Parser {
                 self.advance()?;
                 s
             }
-            _ => return Err(self.wrap_error(String::from("Expected identifier"))),
+            _ => return Err(self.wrap_error("Expected identifier")),
         };
 
         let args = self.parse_fn_args_def()?;
@@ -465,7 +476,7 @@ impl Parser {
 
             let op = match Parser::binary_operator_for(&self.curr()) {
                 Some(o) => o,
-                None => return Err(self.wrap_error(String::from("Expected operator"))),
+                None => return Err(self.wrap_error("Expected operator")),
             };
 
             self.advance()?;
@@ -489,23 +500,23 @@ impl Parser {
 
         let condition = self.parse_expr()?;
         self.expect(LeftCurlBracket)?;
-        let consequent = self.parse_expr()?;
-        let alternative = match self.next() {
-            Else => {
-                self.expect(Else)?;
-                if self.next() == If {
-                    Some(Box::new(self.parse_conditional()?))
-                } else {
-                    Some(Box::new(self.parse_expr()?))
-                }
+        let consequent = self.parse_statement()?;
+        self.expect(RightCurlBracket)?;
+        self.expect(Else)?;
+        let alternative = match self.curr() {
+            If => self.parse_conditional()?,
+            _ => {
+                self.expect(LeftCurlBracket)?;
+                let expr = self.parse_statement()?;
+                self.expect(RightCurlBracket)?;
+                expr
             }
-            _ => None,
         };
 
         Ok(Conditional {
             condition: Box::new(condition),
             consequent: Box::new(consequent),
-            alternative,
+            alternative: Box::new(alternative),
         })
     }
 
@@ -515,7 +526,7 @@ impl Parser {
                 self.advance()?;
                 s
             }
-            _ => return Err(self.wrap_error(String::from("Expected identifier"))),
+            _ => return Err(self.wrap_error("Expected identifier")),
         };
 
         match self.curr() {
@@ -536,7 +547,7 @@ impl Parser {
                     match self.curr() {
                         Comma => (),
                         RightParen => break,
-                        _ => return Err(self.wrap_error(String::from("expected comma"))),
+                        _ => return Err(self.wrap_error("expected comma")),
                     }
 
                     self.advance()?;
@@ -554,14 +565,6 @@ impl Parser {
 
     fn parse_fn_type_desc(&mut self) -> Result<TypeDesc, ParserError> {
         self.expect(LeftParen)?;
-        if self.curr() == RightParen {
-            self.advance()?;
-            let return_type = self.parse_fn_return_type()?;
-            return Ok(FnSignature {
-                args: None,
-                return_type: Box::new(return_type),
-            });
-        }
         let mut fn_args = Vec::new();
         loop {
             fn_args.push(self.parse_type_desc()?);
@@ -573,14 +576,12 @@ impl Parser {
                 Comma => {
                     self.advance()?;
                 }
-                _ => {
-                    return Err(self.wrap_error(String::from("Failed to parse fn type description")))
-                }
+                _ => return Err(self.wrap_error("Failed to parse fn type description")),
             }
         }
         let return_type = self.parse_fn_return_type()?;
         Ok(FnSignature {
-            args: Some(fn_args),
+            args: fn_args,
             return_type: Box::new(return_type),
         })
     }
@@ -613,7 +614,7 @@ impl Parser {
                 self.advance()?;
                 Ok(TypeDesc::BoolType)
             }
-            _ => Err(self.wrap_error(String::from("Expected type name or signature"))),
+            _ => Err(self.wrap_error("Expected type name or signature")),
         }
     }
 
@@ -623,7 +624,7 @@ impl Parser {
                 self.advance()?;
                 s
             }
-            _ => return Err(self.wrap_error(String::from("Expected identifier"))),
+            _ => return Err(self.wrap_error("Expected identifier")),
         };
         self.expect(Colon)?;
         let type_desc = self.parse_type_desc()?;
@@ -693,7 +694,7 @@ mod tests {
         .collect::<Vec<_>>();
         let mut parser = Parser::new(tokens);
         let proto = parser.parse_prototype().unwrap();
-        let args = proto.args.unwrap();
+        let args = proto.args;
         assert_eq!(proto.name, "test");
         assert_eq!(args.len(), 2);
         assert_eq!(args.get(0).unwrap().name, "param1");
@@ -731,7 +732,7 @@ mod tests {
         .collect::<Vec<_>>();
         let mut parser = Parser::new(tokens);
         let proto = parser.parse_prototype().unwrap();
-        let args = proto.args.unwrap();
+        let args = proto.args;
         assert_eq!(proto.name, "test");
         assert_eq!(args.len(), 2);
         assert_eq!(args.get(0).unwrap().name, "param1");
@@ -743,7 +744,7 @@ mod tests {
         assert_eq!(
             args.get(1).unwrap().type_desc,
             FnSignature {
-                args: Some(vec![TypeDesc::IntType]),
+                args: vec![TypeDesc::IntType],
                 return_type: Box::new(TypeDesc::BoolType)
             }
         );

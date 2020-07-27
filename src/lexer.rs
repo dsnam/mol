@@ -62,9 +62,9 @@ pub struct LexerError {
 }
 
 impl LexerError {
-    pub fn new(error_msg: String, line: i32, col: i32) -> Self {
+    pub fn new(error_msg: impl Into<String>, line: i32, col: i32) -> Self {
         Self {
-            error: error_msg,
+            error: error_msg.into(),
             line,
             col,
         }
@@ -115,7 +115,7 @@ impl<'a> Lexer<'a> {
         Ok(TokenInfo::new(tok, self.line, col as i32))
     }
 
-    fn wrap_error(&self, msg: String) -> LexerResult {
+    fn wrap_error(&self, msg: impl Into<String>) -> LexerResult {
         Err(LexerError::new(msg, self.line, self.col))
     }
 
@@ -228,7 +228,7 @@ impl<'a> Lexer<'a> {
                 loop {
                     let next = match self.chars.peek() {
                         Some(next) => *next,
-                        None => return self.wrap_error(String::from("Unexpected EOF")),
+                        None => return self.wrap_error("Unexpected EOF"),
                     };
                     if !next.is_digit(10) {
                         if next == '.' && !is_float {
@@ -249,7 +249,7 @@ impl<'a> Lexer<'a> {
                 loop {
                     let next = match self.chars.peek() {
                         Some(next) => *next,
-                        None => return self.wrap_error(String::from("Unexpected EOF")),
+                        None => return self.wrap_error("Unexpected EOF"),
                     };
                     if next != '_' && !next.is_alphanumeric() {
                         break;
