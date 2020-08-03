@@ -1,19 +1,62 @@
 extern crate molva;
 
+use inkwell::context::Context;
+use inkwell::passes::PassManager;
+use molva::codegen::Compiler;
 use molva::lexer::*;
 use molva::parser::*;
+use std::env;
+use std::fs;
 
-// this just makes a repl to play with the lexer at the moment
+// passing "repl" will make a fake sort of repl where you can type functions and get the IR
+// passing a path to a file will output the IR for everything in the file
 fn main() {
-    loop {
-        let mut input = String::new();
-        while !input.contains("\n") {
-            let next_line = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-            input.push_str(next_line.as_str())
+    let args: Vec<String> = env::args().collect();
+
+    let context = Context::create();
+    let module = context.create_module("mol");
+    let builder = context.create_builder();
+    let fpm = PassManager::create(&module);
+    fpm.add_instruction_combining_pass();
+    fpm.add_reassociate_pass();
+    fpm.add_gvn_pass();
+    fpm.add_cfg_simplification_pass();
+    fpm.add_basic_alias_analysis_pass();
+    fpm.add_promote_memory_to_register_pass();
+    fpm.add_instruction_combining_pass();
+    fpm.add_reassociate_pass();
+
+    fpm.initialize();
+    let arg = args.get(1).unwrap();
+    if arg == "repl" {
+        loop {
+            let mut input = String::new();
+            while !input.contains("\n") {
+                let next_line = String::new();
+                std::io::stdin().read_line(&mut input).unwrap();
+                input.push_str(next_line.as_str())
+            }
+            if input == "quit" {
+                break;
+            }
+            let lexer = Lexer::new(&input);
+            let tokens = lexer.map(|x| x.unwrap()).collect::<Vec<_>>();
+            let mut parser = Parser::new(tokens);
+            let mol_mod = parser.parse().unwrap();
+            let fnc = Compiler::compile(&context, &builder, &fpm, &module, &mol_mod).unwrap();
+            fnc.iter().for_each(|f| {
+                f.print_to_stderr();
+            });
         }
-        let mut lexer = Lexer::new(&input);
-        let tokens = lexer.by_ref().collect::<Vec<_>>();
-        println!("lexing: {:?}", tokens)
+    } else {
+        let input = fs::read_to_string(arg).expect("error reading file");
+        let lexer = Lexer::new(&input);
+        let tokens = lexer.map(|x| x.unwrap()).collect::<Vec<_>>();
+        let mut parser = Parser::new(tokens);
+        let mol_mod = parser.parse().unwrap();
+        let fnc = Compiler::compile(&context, &builder, &fpm, &module, &mol_mod).unwrap();
+        fnc.iter().for_each(|f| {
+            f.print_to_stderr();
+        });
     }
 }
