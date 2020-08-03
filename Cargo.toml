@@ -9,3 +9,4 @@ edition = "2018"
 name = "molva"
 
 [dependencies]
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0"}
