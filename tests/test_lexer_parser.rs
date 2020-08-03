@@ -5,8 +5,10 @@ use molva::parser::{Expr, Module, Parser, ParserError};
 #[test]
 fn lex_and_parse_fn() {
     let input = "fn negate(x: int) -> int {
-        val y = x * 2;
-        0-x+44%y;
+        let 
+            val y = x * 2;
+        in
+            0-44%y;
     }";
     let lexer = Lexer::new(input);
     let tokens = lexer.map(|x| x.unwrap()).collect::<Vec<_>>();
@@ -19,10 +21,10 @@ fn lex_and_parse_fn() {
 fn test_mod_and_funcs_parse() {
     let input = "module test;
         fn is_positive(x: int) -> bool {
-            return x > 0;
+            x > 0;
         }
         fn apply_thing_doer_to_thing(thing: int, thing_doer: (int) -> bool) -> bool {
-            return thing_doer(thing);
+            thing_doer(thing);
         }
         ";
     let result = lex_and_parse(input).unwrap();

@@ -1,5 +1,5 @@
 use crate::lexer::{Token, Token::*, TokenInfo};
-use crate::parser::Expr::{Conditional, Invoke, Unary, ValDec, Variable};
+use crate::parser::Expr::{Conditional, Invoke, LetIn, Unary, ValDec, Variable};
 use crate::parser::TypeDesc::FnSignature;
 use std::collections::HashMap;
 use std::error::Error;
@@ -36,8 +36,9 @@ pub enum Expr {
         value: Box<Expr>,
     },
 
-    Return {
-        value: Box<Expr>,
+    LetIn {
+        val_decls: Vec<Expr>,
+        body: Box<Expr>,
     },
 
     Float(f64),
@@ -98,7 +99,7 @@ pub enum TypeDesc {
 #[derive(Debug)]
 pub struct Function {
     pub prototype: Prototype,
-    pub body: Vec<Expr>,
+    pub body: Box<Expr>,
 }
 
 #[derive(Debug)]
@@ -298,14 +299,6 @@ impl Parser {
         unimplemented!()
     }
 
-    fn parse_statement(&mut self) -> Result<Expr, ParserError> {
-        match self.curr() {
-            Val => self.parse_val_decl(),
-            Return => self.parse_return(),
-            _ => self.parse_expr_st(),
-        }
-    }
-
     fn parse_val_decl(&mut self) -> Result<Expr, ParserError> {
         self.expect(Val)?;
         let name = match self.curr() {
@@ -333,22 +326,17 @@ impl Parser {
         })
     }
 
-    fn parse_return(&mut self) -> Result<Expr, ParserError> {
-        self.expect(Return)?;
-        let expr = self.parse_expr()?;
-        self.expect(Semicolon)?;
-        Ok(Expr::Return {
-            value: Box::new(expr),
-        })
-    }
-
-    fn parse_expr_st(&mut self) -> Result<Expr, ParserError> {
+    fn parse_expr_term(&mut self) -> Result<Expr, ParserError> {
         let expr = self.parse_expr()?;
         match &expr {
             Conditional {
                 condition: _,
                 consequent: _,
                 alternative: _,
+            } => (),
+            LetIn {
+                val_decls: _,
+                body: _,
             } => (),
             _ => self.expect(Semicolon)?,
         }
@@ -360,8 +348,23 @@ impl Parser {
             Identifier(_) => self.parse_identifier(),
             LeftParen => self.parse_paren_expr(),
             If => self.parse_conditional(),
+            Let => self.parse_let_in(),
             _ => self.parse_literal(),
         }
+    }
+
+    fn parse_let_in(&mut self) -> Result<Expr, ParserError> {
+        self.expect(Let)?;
+        let mut val_decls = vec![];
+        while self.curr() != In {
+            val_decls.push(self.parse_val_decl()?)
+        }
+        self.expect(In)?;
+        let body = self.parse_expr_term()?;
+        Ok(LetIn {
+            val_decls,
+            body: Box::new(body),
+        })
     }
 
     fn parse_paren_expr(&mut self) -> Result<Expr, ParserError> {
@@ -381,7 +384,10 @@ impl Parser {
     pub fn parse_function(&mut self) -> Result<Function, ParserError> {
         let prototype = self.parse_prototype()?;
         let body = self.parse_block()?;
-        Ok(Function { prototype, body })
+        Ok(Function {
+            prototype,
+            body: Box::new(body),
+        })
     }
 
     fn parse_fn_args_def(&mut self) -> Result<Vec<TypedIdentifier>, ParserError> {
@@ -431,14 +437,11 @@ impl Parser {
         })
     }
 
-    fn parse_block(&mut self) -> Result<Vec<Expr>, ParserError> {
+    fn parse_block(&mut self) -> Result<Expr, ParserError> {
         self.expect(LeftCurlBracket)?;
-        let mut statements = vec![];
-        while self.curr() != RightCurlBracket {
-            statements.push(self.parse_statement()?);
-        }
+        let expr = self.parse_expr_term()?;
         self.expect(RightCurlBracket)?;
-        Ok(statements)
+        Ok(expr)
     }
 
     pub fn parse_expr(&mut self) -> Result<Expr, ParserError> {
@@ -500,14 +503,14 @@ impl Parser {
 
         let condition = self.parse_expr()?;
         self.expect(LeftCurlBracket)?;
-        let consequent = self.parse_statement()?;
+        let consequent = self.parse_expr_term()?;
         self.expect(RightCurlBracket)?;
         self.expect(Else)?;
         let alternative = match self.curr() {
             If => self.parse_conditional()?,
             _ => {
                 self.expect(LeftCurlBracket)?;
-                let expr = self.parse_statement()?;
+                let expr = self.parse_expr_term()?;
                 self.expect(RightCurlBracket)?;
                 expr
             }
@@ -754,7 +757,7 @@ mod tests {
     #[test]
     fn test_parse_full_fn() {
         // fn test(param1: int) -> int {
-        //   return param1 + 4;
+        //   param1 + 4;
         // }
         let tokens = vec![
             Fn,
@@ -767,7 +770,6 @@ mod tests {
             Arrow,
             IntType,
             LeftCurlBracket,
-            Return,
             Identifier(String::from("param1")),
             Plus,
             Int(4),
