@@ -425,7 +425,7 @@ mod tests {
     fn test_exp() {
         let lexer = Lexer::new(
             "fn negate(x: int) -> int {
-                return -x;
+                -x;
             }",
         );
         let tokens = lexer.map(|x| unwrap_token(x)).collect::<Vec<_>>();
@@ -440,7 +440,6 @@ mod tests {
             Arrow,
             IntType,
             LeftCurlBracket,
-            Return,
             Minus,
             Identifier(String::from("x")),
             Semicolon,
