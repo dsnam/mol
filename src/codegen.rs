@@ -1,4 +1,4 @@
-use crate::parser as Mol;
+use crate::ast as Mol;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;

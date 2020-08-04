@@ -1,112 +1,11 @@
+use crate::ast;
+use crate::ast::{Expr, Function, Module, Operator, Prototype, TypeDesc, TypedIdentifier};
+
 use crate::lexer::{Token, Token::*, TokenInfo};
-use crate::parser::Expr::{Conditional, Invoke, LetIn, Unary, ValDec, Variable};
-use crate::parser::TypeDesc::FnSignature;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Formatter;
-
-#[derive(Debug)]
-pub enum Expr {
-    Invoke {
-        fn_name: String,
-        args: Vec<Expr>,
-    },
-
-    Binary {
-        operator: Operator,
-        left: Box<Expr>,
-        right: Box<Expr>,
-    },
-
-    Unary {
-        operator: Operator,
-        operand: Box<Expr>,
-    },
-
-    Conditional {
-        condition: Box<Expr>,
-        consequent: Box<Expr>,
-        alternative: Box<Expr>,
-    },
-
-    ValDec {
-        name: String,
-        type_desc: Option<TypeDesc>,
-        value: Box<Expr>,
-    },
-
-    LetIn {
-        val_decls: Vec<Expr>,
-        body: Box<Expr>,
-    },
-
-    Float(f64),
-    StringLiteral(String),
-    Int(i32),
-    BoolTrue,
-    BoolFalse,
-    Variable(String),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Operator {
-    Equal,
-    NotEqual,
-    LessThan,
-    GreaterThan,
-    LessThanEqual,
-    GreaterThanEqual,
-    Not,
-    And,
-    Or,
-    Assign,
-    Negate,
-    Add,
-    Sub,
-    Mult,
-    Div,
-    Mod,
-    Deref,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TypedIdentifier {
-    pub name: String,
-    pub type_desc: TypeDesc,
-}
-
-#[derive(Debug)]
-pub struct Prototype {
-    pub name: String,
-    pub args: Vec<TypedIdentifier>,
-    pub return_type: TypeDesc,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TypeDesc {
-    TypeName(String),
-    FnSignature {
-        args: Vec<TypeDesc>,
-        return_type: Box<TypeDesc>,
-    },
-    IntType,
-    FloatType,
-    StrType,
-    BoolType,
-}
-
-#[derive(Debug)]
-pub struct Function {
-    pub prototype: Prototype,
-    pub body: Box<Expr>,
-}
-
-#[derive(Debug)]
-pub struct Module {
-    pub functions: HashMap<String, Function>,
-    pub name: String,
-}
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -286,7 +185,7 @@ impl Parser {
         self.expect(Module)?;
 
         let module = match self.parse_identifier()? {
-            Variable(s) => Ok(s),
+            Expr::Variable(s) => Ok(s),
             _ => Err(self.wrap_error("invalid module name")),
         };
 
@@ -319,7 +218,7 @@ impl Parser {
 
         self.expect(Semicolon)?;
 
-        Ok(ValDec {
+        Ok(Expr::ValDec {
             name,
             type_desc: val_type,
             value: Box::new(expr),
@@ -329,12 +228,12 @@ impl Parser {
     fn parse_expr_term(&mut self) -> Result<Expr, ParserError> {
         let expr = self.parse_expr()?;
         match &expr {
-            Conditional {
+            Expr::Conditional {
                 condition: _,
                 consequent: _,
                 alternative: _,
             } => (),
-            LetIn {
+            Expr::LetIn {
                 val_decls: _,
                 body: _,
             } => (),
@@ -361,7 +260,7 @@ impl Parser {
         }
         self.expect(In)?;
         let body = self.parse_expr_term()?;
-        Ok(LetIn {
+        Ok(Expr::LetIn {
             val_decls,
             body: Box::new(body),
         })
@@ -457,7 +356,7 @@ impl Parser {
             Some(op) => {
                 self.advance()?;
                 let operand = self.parse_primary()?;
-                Ok(Unary {
+                Ok(Expr::Unary {
                     operator: op,
                     operand: Box::new(operand),
                 })
@@ -516,7 +415,7 @@ impl Parser {
             }
         };
 
-        Ok(Conditional {
+        Ok(Expr::Conditional {
             condition: Box::new(condition),
             consequent: Box::new(consequent),
             alternative: Box::new(alternative),
@@ -536,7 +435,7 @@ impl Parser {
             LeftParen => {
                 self.advance()?;
                 if let RightParen = self.curr() {
-                    return Ok(Invoke {
+                    return Ok(Expr::Invoke {
                         fn_name: name,
                         args: vec![],
                     });
@@ -557,12 +456,12 @@ impl Parser {
                 }
                 self.advance()?;
 
-                Ok(Invoke {
+                Ok(Expr::Invoke {
                     fn_name: name,
                     args,
                 })
             }
-            _ => Ok(Variable(name)),
+            _ => Ok(Expr::Variable(name)),
         }
     }
 
@@ -583,7 +482,7 @@ impl Parser {
             }
         }
         let return_type = self.parse_fn_return_type()?;
-        Ok(FnSignature {
+        Ok(TypeDesc::FnSignature {
             args: fn_args,
             return_type: Box::new(return_type),
         })
@@ -665,7 +564,6 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::lexer::*;
-    use crate::parser::TypeDesc::{FnSignature, TypeName};
 
     fn wrap_tok(token: Token) -> TokenInfo {
         TokenInfo {
@@ -703,9 +601,12 @@ mod tests {
         assert_eq!(args.get(0).unwrap().name, "param1");
         assert_eq!(
             args.get(0).unwrap().type_desc,
-            TypeName(String::from("Type1"))
+            TypeDesc::TypeName(String::from("Type1"))
         );
-        assert_eq!(proto.return_type, TypeName(String::from("OutputType")));
+        assert_eq!(
+            proto.return_type,
+            TypeDesc::TypeName(String::from("OutputType"))
+        );
     }
 
     #[test]
@@ -741,17 +642,20 @@ mod tests {
         assert_eq!(args.get(0).unwrap().name, "param1");
         assert_eq!(
             args.get(0).unwrap().type_desc,
-            TypeName(String::from("Type1"))
+            TypeDesc::TypeName(String::from("Type1"))
         );
         assert_eq!(args.get(1).unwrap().name, "param2");
         assert_eq!(
             args.get(1).unwrap().type_desc,
-            FnSignature {
+            TypeDesc::FnSignature {
                 args: vec![TypeDesc::IntType],
                 return_type: Box::new(TypeDesc::BoolType)
             }
         );
-        assert_eq!(proto.return_type, TypeName(String::from("OutputType")));
+        assert_eq!(
+            proto.return_type,
+            TypeDesc::TypeName(String::from("OutputType"))
+        );
     }
 
     #[test]
