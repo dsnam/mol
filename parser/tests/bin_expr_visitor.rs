@@ -1,6 +1,6 @@
 // util for tests
 
-use molva::parser::{Expr, Operator};
+use mol_base::ast::{Expr, Operator};
 
 pub struct BinExprVisitor {}
 

@@ -1,4 +1,3 @@
-use crate::ast as Mol;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -6,6 +5,7 @@ use inkwell::passes::PassManager;
 use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue};
 use inkwell::{FloatPredicate, IntPredicate};
+use mol_base::ast as Mol;
 use std::collections::HashMap;
 
 pub struct Compiler<'a, 'ctx> {
@@ -115,7 +115,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 .context
                 .const_string(string.as_bytes(), false)
                 .as_basic_value_enum()),
-            Mol::Expr::Variable(val_name) => match self.variables.get(val_name.as_str()) {
+            Mol::Expr::Identifier(val_name) => match self.variables.get(val_name.as_str()) {
                 Some(val) => Ok(self
                     .builder
                     .build_load(*val, val_name.as_str())
@@ -384,35 +384,35 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     _ => unimplemented!(),
                 }
             }
-
-            Mol::Expr::Invoke {
-                ref fn_name,
-                ref args,
-            } => match self.get_function(fn_name.as_str()) {
-                Some(fun) => {
-                    let mut compiled_args = Vec::with_capacity(args.len());
-                    for arg in args {
-                        compiled_args.push(self.compile_expr(arg)?);
-                    }
-
-                    let argsv: Vec<BasicValueEnum> = compiled_args
-                        .iter()
-                        .by_ref()
-                        .map(|&val| val.into())
-                        .collect();
-
-                    match self
-                        .builder
-                        .build_call(fun, argsv.as_slice(), "tmp")
-                        .try_as_basic_value()
-                        .left()
-                    {
-                        Some(value) => Ok(value.as_basic_value_enum()),
-                        None => Err(self.err("function not found")),
-                    }
-                }
-                None => Err(self.err(format!("invalid function {}", fn_name))),
-            },
+            _ => unimplemented!(),
+            // Mol::Expr::Invoke {
+            //     ref fn_name,
+            //     ref args,
+            // } => match self.get_function(fn_name.as_str()) {
+            //     Some(fun) => {
+            //         let mut compiled_args = Vec::with_capacity(args.len());
+            //         for arg in args {
+            //             compiled_args.push(self.compile_expr(arg)?);
+            //         }
+            //
+            //         let argsv: Vec<BasicValueEnum> = compiled_args
+            //             .iter()
+            //             .by_ref()
+            //             .map(|&val| val.into())
+            //             .collect();
+            //
+            //         match self
+            //             .builder
+            //             .build_call(fun, argsv.as_slice(), "tmp")
+            //             .try_as_basic_value()
+            //             .left()
+            //         {
+            //             Some(value) => Ok(value.as_basic_value_enum()),
+            //             None => Err(self.err("function not found")),
+            //         }
+            //     }
+            //     None => Err(self.err(format!("invalid function {}", fn_name))),
+            // },
         }
     }
 
@@ -450,11 +450,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         module: &Mol::Module,
     ) -> Result<Vec<FunctionValue<'ctx>>, CompilerError> {
         // first compile all prototypes
-        module.functions.iter().for_each(|(_name, func)| {
+        module.functions.iter().for_each(|func| {
             self.compile_prototype(&func.prototype).unwrap();
         });
         let mut function_values = vec![];
-        for (name, func) in &module.functions {
+        for func in &module.functions {
             function_values.push(self.compile_fn(func)?);
         }
         Ok(function_values)

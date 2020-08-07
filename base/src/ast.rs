@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum Expr {
-    Invoke {
-        fn_name: String,
-        args: Vec<Expr>,
+    Application {
+        left: Box<Expr>,
+        right: Box<Expr>,
     },
 
     Binary {
@@ -40,7 +40,7 @@ pub enum Expr {
     Int(i32),
     BoolTrue,
     BoolFalse,
-    Variable(String),
+    Identifier(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -98,6 +98,6 @@ pub struct Function {
 
 #[derive(Debug)]
 pub struct Module {
-    pub functions: HashMap<String, Function>,
+    pub functions: Vec<Function>,
     pub name: String,
 }

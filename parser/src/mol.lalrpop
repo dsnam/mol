@@ -1,0 +1,124 @@
+use std::str::FromStr;
+use crate::mol_base::ast::{Expr, Function, Prototype, TypedIdentifier, TypeDesc, Operator, Module };
+
+grammar;
+
+Comma<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None=> v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};
+
+pub Module: Module = {
+    <name:ModuleDecl> <functions:Function+> => Module {<>}
+};
+
+ModuleDecl: String = {
+    "mod" <name:Identifier> => name
+}
+
+pub Function: Function = {
+    <prototype:FunctionDecl> "=" <body:Expr> => Function { <> }
+};
+
+FunctionDecl: Prototype = {
+    "fn" <name:Identifier> "(" <args:Comma<TypedIdentifier>> ")" "->" <return_type:TypeDescription> => Prototype { <> }
+};
+
+TypeDescription: TypeDesc = {
+    "int" => TypeDesc::IntType,
+    "float" => TypeDesc::FloatType,
+    "str" => TypeDesc::StrType,
+    "bool" => TypeDesc::BoolType,
+    "(" <args:Comma<TypeDescription>> ")" "->" <return_type:TypeDescription> => TypeDesc::FnSignature { args, return_type: Box::new(return_type) },
+    Identifier => TypeDesc::TypeName(<>)
+};
+
+Identifier: String = {
+    <s:r"[a-zA-Z]+[_a-zA-Z0-9]*"> => s.to_string(),
+};
+
+TypedIdentifier: TypedIdentifier = {
+    <name:Identifier> ":" <type_desc:TypeDescription> => TypedIdentifier { <> }
+};
+
+pub Expr: Box<Expr> = {
+    LetIn => Box::new(<>),
+    Conditional => Box::new(<>),
+    OrExpr,
+};
+
+OrExpr: Box<Expr> = {
+    <left:OrExpr> "||" <right:AndExpr> => Box::new(Expr::Binary { operator: Operator::Or, left, right }),
+    AndExpr,
+};
+
+AndExpr: Box<Expr> = {
+    <left:AndExpr> "&&" <right:CompareExpr> => Box::new(Expr::Binary { operator: Operator::And, left, right }),
+    CompareExpr,
+};
+
+CompareExpr: Box<Expr> = {
+    <left:CompareExpr> ">" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::GreaterThan, left, right }),
+    <left:CompareExpr> ">=" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::GreaterThanEqual, left, right }),
+    <left:CompareExpr> "<=" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::LessThanEqual, left, right }),
+    <left:CompareExpr> "<" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::LessThan, left, right }),
+    AddExpr,
+};
+
+AddExpr: Box<Expr> = {
+    <left:AddExpr> "-" <right:MultExpr> => Box::new(Expr::Binary { operator: Operator::Sub, left, right }),
+    <left:AddExpr> "+" <right:MultExpr> => Box::new(Expr::Binary { operator: Operator::Add, left, right }),
+    MultExpr,
+};
+
+MultExpr: Box<Expr> = {
+    <left:MultExpr> "/" <right:UnaryExpr> => Box::new(Expr::Binary { operator: Operator::Div, left, right }),
+    <left:MultExpr> "*" <right:UnaryExpr> => Box::new(Expr::Binary { operator: Operator::Mult, left, right }),
+    <left:MultExpr> "%" <right:UnaryExpr> => Box::new(Expr::Binary { operator: Operator::Mod, left, right }),
+    UnaryExpr,
+};
+
+UnaryExpr: Box<Expr> = {
+    "!" <operand:AppExpr> => Box::new(Expr::Unary { operator: Operator::Not, operand }),
+    "-" <operand:AppExpr> => Box::new(Expr::Unary { operator: Operator::Negate, operand }),
+    AppExpr,
+};
+
+AppExpr: Box<Expr> = {
+    <left:AppExpr> <right:PrimaryExpr> => Box::new(Expr::Application { <> }),
+    PrimaryExpr,
+};
+
+PrimaryExpr: Box<Expr> = {
+    "(" <Expr> ")",
+    Literal => Box::new(<>),
+    Identifier => Box::new(Expr::Identifier(<>)),
+};
+
+LetIn: Expr = {
+    "let" <val_decls:ValDecl+> "in" <body:Expr> => Expr::LetIn { <> }
+};
+
+ValDecl: Expr = {
+    "val" <name:Identifier> <type_desc:(":" <TypeDescription>)?> "=" <value:Expr> => Expr::ValDec { <> }
+};
+
+Conditional: Expr = {
+    "if" <condition:Expr> ":" <consequent:Expr> "else" ":"? <alternative:Expr> => Expr::Conditional { <> }
+};
+
+Literal: Expr = {
+    IntConst => Expr::Int(<>),
+    FloatConst => Expr::Float(<>),
+    "true" => Expr::BoolTrue,
+    "false" => Expr::BoolFalse,
+};
+
+IntConst: i32 = { r"[0-9]+" => i32::from_str(<>).unwrap() };
+FloatConst: f64 = { r"[0-9]+\.[0-9]+" => f64::from_str(<>).unwrap() };

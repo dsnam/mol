@@ -2,9 +2,9 @@ extern crate molva;
 
 use inkwell::context::Context;
 use inkwell::passes::PassManager;
+use mol_base::ast;
+use mol_parser::mol::{FunctionParser, ModuleParser};
 use molva::codegen::Compiler;
-use molva::lexer::*;
-use molva::parser::*;
 use std::env;
 use std::fs;
 
@@ -39,10 +39,12 @@ fn main() {
             if input == "quit" {
                 break;
             }
-            let lexer = Lexer::new(&input);
-            let tokens = lexer.map(|x| x.unwrap()).collect::<Vec<_>>();
-            let mut parser = Parser::new(tokens);
-            let mol_mod = parser.parse().unwrap();
+            let function = FunctionParser::new().parse(&input).unwrap();
+            let functions = vec![function];
+            let mol_mod = ast::Module {
+                name: "repl".to_string(),
+                functions,
+            };
             let fnc = Compiler::compile(&context, &builder, &fpm, &module, &mol_mod).unwrap();
             fnc.iter().for_each(|f| {
                 f.print_to_stderr();
@@ -50,10 +52,7 @@ fn main() {
         }
     } else {
         let input = fs::read_to_string(arg).expect("error reading file");
-        let lexer = Lexer::new(&input);
-        let tokens = lexer.map(|x| x.unwrap()).collect::<Vec<_>>();
-        let mut parser = Parser::new(tokens);
-        let mol_mod = parser.parse().unwrap();
+        let mol_mod = ModuleParser::new().parse(&input).unwrap();
         let fnc = Compiler::compile(&context, &builder, &fpm, &module, &mol_mod).unwrap();
         fnc.iter().for_each(|f| {
             f.print_to_stderr();
