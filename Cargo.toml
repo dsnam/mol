@@ -1,11 +1,11 @@
 [package]
-name = "molva"
+name = "mol"
 version = "0.1.0"
 authors = ["Alexander Dodson <dodsonn@gmail.com>"]
 edition = "2018"
 
 [lib]
-name = "molva"
+name = "mol"
 
 [dependencies]
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0"}

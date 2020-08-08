@@ -1,10 +1,10 @@
-extern crate molva;
+extern crate mol;
 
 use inkwell::context::Context;
 use inkwell::passes::PassManager;
+use mol::codegen::Compiler;
 use mol_base::ast;
 use mol_parser::mol::{FunctionParser, ModuleParser};
-use molva::codegen::Compiler;
 use std::env;
 use std::fs;
 
@@ -27,7 +27,11 @@ fn main() {
     fpm.add_reassociate_pass();
 
     fpm.initialize();
-    let arg = args.get(1).unwrap();
+    let arg = match args.get(1) {
+        Some(a) => a,
+        None => "repl",
+    };
+
     if arg == "repl" {
         loop {
             let mut input = String::new();
