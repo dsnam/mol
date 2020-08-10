@@ -68,6 +68,8 @@ CompareExpr: Box<Expr> = {
     <left:CompareExpr> ">=" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::GreaterThanEqual, left, right }),
     <left:CompareExpr> "<=" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::LessThanEqual, left, right }),
     <left:CompareExpr> "<" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::LessThan, left, right }),
+    <left:CompareExpr> "==" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::Equal, left, right }),
+    <left:CompareExpr> "!=" <right:AddExpr> => Box::new(Expr::Binary { operator: Operator::NotEqual, left, right }),
     AddExpr,
 };
 
