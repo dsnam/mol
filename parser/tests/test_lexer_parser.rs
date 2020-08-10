@@ -17,7 +17,7 @@ fn lex_and_parse_fn() {
 #[test]
 fn test_str_parse() {
     let input = "\"test\"";
-    let result = ExprParser::new().parse(input).unwrap();
+    let result: Box<Expr> = ExprParser::new().parse(input).unwrap();
     match *result {
         Expr::StringLiteral(s) => assert_eq!(s, "test"),
         _ => assert!(false),
@@ -27,7 +27,7 @@ fn test_str_parse() {
 #[test]
 fn test_empty_str_parse() {
     let input = "\"\"";
-    let result = ExprParser::new().parse(input).unwrap();
+    let result: Box<Expr> = ExprParser::new().parse(input).unwrap();
     match *result {
         Expr::StringLiteral(s) => assert_eq!(s, ""),
         _ => assert!(false),
