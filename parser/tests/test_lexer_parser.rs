@@ -1,7 +1,7 @@
 mod bin_expr_visitor;
 use bin_expr_visitor::BinExprVisitor;
 use mol_base::ast::Expr;
-use mol_parser::mol::{ ExprParser, FunctionParser };
+use mol_parser::mol::{ExprParser, FunctionParser};
 
 #[test]
 fn lex_and_parse_fn() {
@@ -12,6 +12,26 @@ fn lex_and_parse_fn() {
             0-44*y";
     let result = FunctionParser::new().parse(input).unwrap();
     assert_eq!(result.prototype.name, "negate");
+}
+
+#[test]
+fn test_str_parse() {
+    let input = "\"test\"";
+    let result = ExprParser::new().parse(input).unwrap();
+    match *result {
+        Expr::StringLiteral(s) => assert_eq!(s, "test"),
+        _ => assert!(false),
+    }
+}
+
+#[test]
+fn test_empty_str_parse() {
+    let input = "\"\"";
+    let result = ExprParser::new().parse(input).unwrap();
+    match *result {
+        Expr::StringLiteral(s) => assert_eq!(s, ""),
+        _ => assert!(false),
+    }
 }
 
 #[test]

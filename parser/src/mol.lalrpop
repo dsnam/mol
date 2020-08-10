@@ -114,11 +114,13 @@ Conditional: Expr = {
 };
 
 Literal: Expr = {
-    IntConst => Expr::Int(<>),
-    FloatConst => Expr::Float(<>),
+    IntLiteral => Expr::Int(<>),
+    FloatLiteral => Expr::Float(<>),
+    StringLiteral => Expr::StringLiteral(<>),
     "true" => Expr::BoolTrue,
     "false" => Expr::BoolFalse,
 };
 
-IntConst: i32 = { r"[0-9]+" => i32::from_str(<>).unwrap() };
-FloatConst: f64 = { r"[0-9]+\.[0-9]+" => f64::from_str(<>).unwrap() };
+IntLiteral: i32 = { r"[0-9]+" => i32::from_str(<>).unwrap() };
+FloatLiteral: f64 = { r"[0-9]+\.[0-9]+" => f64::from_str(<>).unwrap() };
+StringLiteral: String = { <s:r#"".*""#> => s[1..s.len()-1].to_string() };
