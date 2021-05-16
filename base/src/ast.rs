@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     Application {
         left: Box<Expr>,
@@ -24,6 +25,11 @@ pub enum Expr {
         alternative: Box<Expr>,
     },
 
+    Function {
+        prototype: Prototype,
+        body: Box<Expr>,
+    },
+
     ValDec {
         name: String,
         type_desc: Option<TypeDesc>,
@@ -41,6 +47,7 @@ pub enum Expr {
     BoolTrue,
     BoolFalse,
     Identifier(String),
+    Error(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -70,7 +77,7 @@ pub struct TypedIdentifier {
     pub type_desc: TypeDesc,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Prototype {
     pub name: String,
     pub args: Vec<TypedIdentifier>,
@@ -91,13 +98,8 @@ pub enum TypeDesc {
 }
 
 #[derive(Debug)]
-pub struct Function {
-    pub prototype: Prototype,
-    pub body: Box<Expr>,
-}
-
-#[derive(Debug)]
 pub struct Module {
-    pub functions: Vec<Function>,
+    pub functions: Vec<Expr>,
+    pub values: Vec<Expr>,
     pub name: String,
 }

@@ -1,0 +1,9 @@
+[package]
+name = "check"
+version = "0.1.0"
+authors = ["dsnam <dodsonn@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+mol_base = { path = "../base", version = "0.1.0"}
+mol_parser = { path = "../parser" }

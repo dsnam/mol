@@ -1,7 +1,8 @@
 use std::str::FromStr;
-use crate::mol_base::ast::{Expr, Function, Prototype, TypedIdentifier, TypeDesc, Operator, Module };
+use crate::mol_base::ast::{Expr, Prototype, TypedIdentifier, TypeDesc, Operator, Module };
+use lalrpop_util::ErrorRecovery;
 
-grammar;
+grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 
 Comma<T>: Vec<T> = {
     <v:(<T> ",")*> <e:T?> => match e {
@@ -15,15 +16,15 @@ Comma<T>: Vec<T> = {
 };
 
 pub Module: Module = {
-    <name:ModuleDecl> <functions:Function+> => Module {<>}
+    <name:ModuleDecl> <functions:Function*> <values:ValDecl*> => Module {<>}
 };
 
 ModuleDecl: String = {
     "mod" <name:Identifier> => name
 }
 
-pub Function: Function = {
-    <prototype:FunctionDecl> "=" <body:Expr> => Function { <> }
+pub Function: Expr = {
+    <prototype:FunctionDecl> "=" <body:Expr> => Expr::Function { <> }
 };
 
 FunctionDecl: Prototype = {
@@ -90,6 +91,7 @@ UnaryExpr: Box<Expr> = {
     "!" <operand:AppExpr> => Box::new(Expr::Unary { operator: Operator::Not, operand }),
     "-" <operand:AppExpr> => Box::new(Expr::Unary { operator: Operator::Negate, operand }),
     AppExpr,
+    ! => { errors.push(<>); Box::new(Expr::Error("aaaaa".to_string())) }
 };
 
 AppExpr: Box<Expr> = {

@@ -1,1 +1,1 @@
-extern crate molva;
+extern crate mol;

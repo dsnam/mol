@@ -48,6 +48,7 @@ fn main() {
             let mol_mod = ast::Module {
                 name: "repl".to_string(),
                 functions,
+                values: vec![],
             };
             let fnc = Compiler::compile(&context, &builder, &fpm, &module, &mol_mod).unwrap();
             fnc.iter().for_each(|f| {

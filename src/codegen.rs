@@ -98,12 +98,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Mol::Expr::Int(x) => Ok(self
                 .context
                 .i32_type()
-                .const_int(*x as u64, true)
+                .const_int(x as u64, true)
                 .as_basic_value_enum()),
             Mol::Expr::Float(x) => Ok(self
                 .context
                 .f64_type()
-                .const_float(*x)
+                .const_float(&**x)
                 .as_basic_value_enum()),
             Mol::Expr::BoolFalse => Ok(self.context.bool_type().const_zero().as_basic_value_enum()),
             Mol::Expr::BoolTrue => Ok(self
