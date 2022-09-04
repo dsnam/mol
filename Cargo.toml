@@ -8,6 +8,6 @@ edition = "2018"
 name = "mol"
 
 [dependencies]
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0"}
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm10-0"]}
 mol_base = { path = "base", version = "0.1.0" }
 mol_parser = { path = "parser", version = "0.1.0" }

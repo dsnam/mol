@@ -2,7 +2,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::passes::PassManager;
-use inkwell::types::{BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue};
 use inkwell::{FloatPredicate, IntPredicate};
 use mol_base::ast as Mol;
@@ -465,11 +465,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         prototype: &Mol::Prototype,
     ) -> Result<FunctionValue<'ctx>, CompilerError> {
         let return_type = self.get_type(&prototype.return_type);
-        let args_types = &prototype
+        let args_types = prototype
             .args
             .iter()
             .map(|t| self.get_type(&t.type_desc))
-            .collect::<Vec<BasicTypeEnum>>();
+            .collect::<Vec<BasicMetadataTypeEnum>>()
+            .as_slice();
 
         let fn_type = return_type.fn_type(args_types, false);
 
